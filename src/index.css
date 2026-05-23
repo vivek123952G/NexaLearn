@@ -1,0 +1,133 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-cyber-lime: #CCFF00;
+  --color-neon-purple: #7B61FF;
+  --color-electric-blue: #2E5BFF;
+  --color-dark-slate: #030712;
+}
+
+:root {
+  --glow-color: #2E5BFF;
+  --secondary-glow: #7B61FF;
+}
+
+body {
+  margin: 0;
+  background-color: #030712;
+  color: #f3f4f6;
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+/* Custom Cyber Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(3, 7, 18, 0.4);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(123, 97, 255, 0.4);
+  border-radius: 9px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(204, 255, 0, 0.8);
+}
+
+/* Cyberpunk Grid Wallpaper */
+.cyber-grid-bg {
+  background-size: 40px 40px;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  position: relative;
+}
+
+.cyber-grid-bg::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at 50% 30%, rgba(46, 91, 255, 0.15) 0%, rgba(3, 7, 18, 0.95) 100%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Neo Glassmorphism Panel styles */
+.neo-glass {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 2rem; /* 32px standard bento corners */
+  box-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.5);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.neo-glass:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: 0 15px 50px 0 rgba(0, 0, 0, 0.6);
+}
+
+/* Neon glows and animations */
+.glow-cyan {
+  box-shadow: 0 0 20px rgba(46, 91, 255, 0.4);
+}
+
+.glow-purple {
+  box-shadow: 0 0 20px rgba(123, 97, 255, 0.4);
+}
+
+.glow-lime {
+  box-shadow: 0 0 20px rgba(204, 255, 0, 0.3);
+}
+
+@keyframes laser-sweep {
+  0% { top: 0%; opacity: 0.8; }
+  50% { top: 100%; opacity: 0.8; }
+  100% { top: 0%; opacity: 0.8; }
+}
+
+.scanner-laser {
+  animation: laser-sweep 3s ease-in-out infinite;
+}
+
+/* Pulsing AI core aura */
+@keyframes orb-pulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 25px rgba(46, 91, 255, 0.6));
+  }
+  50% {
+    transform: scale(1.08);
+    filter: drop-shadow(0 0 45px rgba(204, 255, 0, 0.8));
+  }
+}
+
+.pulse-core-orb {
+  animation: orb-pulse 4s infinite ease-in-out;
+}
+
+/* Hologram Scanning effect */
+.hologram-scan {
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%, 
+    rgba(0, 0, 0, 0.25) 50%
+  ), linear-gradient(
+    90deg, 
+    rgba(255, 0, 0, 0.06), 
+    rgba(0, 255, 0, 0.02), 
+    rgba(0, 0, 255, 0.06)
+  );
+  background-size: 100% 4px, 6px 100%;
+}
+
