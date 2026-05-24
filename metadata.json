@@ -1,5 +1,5 @@
 {
-  "name": "NexaSnap AI Infinity",
+  "name": "NexaLearn AI Infinity",
   "description": "An ultra-premium, futuristic AI-powered student ecosystem that combines social studying, gamification, and advanced productivity.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

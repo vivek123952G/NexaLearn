@@ -23,17 +23,37 @@ export const AutonomousWeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
   onAddNotification 
 }) => {
   const [tasks, setTasks] = useState<WeeklyTask[]>(() => {
-    const saved = localStorage.getItem("nexa_weekly_planner");
+    const saved = localStorage.getItem(`nexa_weekly_planner_${profile.username?.toLowerCase() || ''}`);
     if (saved) {
       try {
         return JSON.parse(saved);
-      } catch (e) {
-        // Fallback
-      }
+      } catch (e) {}
     }
-    // Pull fresh seed-based initial tasks from separate WeeklyTaskModel
     return generateTasksForWeekSeed(Math.floor(Date.now() / (1000 * 60 * 60 * 24 * 7)), 5);
   });
+
+  // Load tasks dynamically from Cloud Firestore
+  useEffect(() => {
+    if (profile.username) {
+      import("../lib/firebase").then(({ getSyncTasksFromFirestore }) => {
+        getSyncTasksFromFirestore(profile.username).then((remoteTasks) => {
+          if (remoteTasks && remoteTasks.length > 0) {
+            const mapped: WeeklyTask[] = remoteTasks.map((t: any) => ({
+              id: t.id,
+              day: t.day || "Monday",
+              task: t.task_title || t.task || "Untitled study mission",
+              completed: t.is_completed || t.completed || false,
+              priority: t.priority || "medium",
+              category: t.category || "Mathematics",
+              rewardXp: t.rewardXp || 25,
+              rewardCoins: t.rewardCoins || 20
+            }));
+            setTasks(mapped);
+          }
+        });
+      });
+    }
+  }, [profile.username]);
 
   const [activeDay, setActiveDay] = useState<string>("All");
   const [taskText, setTaskText] = useState("");
@@ -41,15 +61,75 @@ export const AutonomousWeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
   const [taskPriority, setTaskPriority] = useState<"low" | "medium" | "high">("medium");
   const [taskCategory, setTaskCategory] = useState<"Mathematics" | "Science" | "Tech" | "Language">("Mathematics");
 
+  const [lastRotateTime, setLastRotateTime] = useState<number>(() => {
+    const saved = localStorage.getItem(`nexa_weekly_rotate_last_${profile.username?.toLowerCase() || ''}`);
+    return saved ? parseInt(saved, 10) : 0;
+  });
+  const [cooldownRemainingStr, setCooldownRemainingStr] = useState<string>("");
+
+  useEffect(() => {
+    if (!lastRotateTime) {
+      setCooldownRemainingStr("");
+      return;
+    }
+
+    const checkCooldown = () => {
+      const elapsed = Date.now() - lastRotateTime;
+      const cooldownMs = 24 * 60 * 60 * 1000; // 24 hours
+      const remaining = cooldownMs - elapsed;
+
+      if (remaining <= 0) {
+        setCooldownRemainingStr("");
+      } else {
+        const hours = Math.floor(remaining / (1000 * 60 * 60));
+        const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((remaining % (1000 * 60)) / 1000);
+        setCooldownRemainingStr(`${hours}h ${minutes}m ${seconds}s`);
+      }
+    };
+
+    checkCooldown();
+    const interval = setInterval(checkCooldown, 1000);
+    return () => clearInterval(interval);
+  }, [lastRotateTime]);
+
   const saveTasks = (newTasks: WeeklyTask[]) => {
     setTasks(newTasks);
-    localStorage.setItem("nexa_weekly_planner", JSON.stringify(newTasks));
+    const suffix = profile.username ? `_${profile.username.toLowerCase()}` : "";
+    localStorage.setItem(`nexa_weekly_planner${suffix}`, JSON.stringify(newTasks));
+
+    // Sync individual document attributes securely to Cloud Firestore
+    if (profile.username) {
+      import("../lib/firebase").then(({ syncTaskToFirestore }) => {
+        newTasks.forEach((t) => {
+          syncTaskToFirestore(profile.username, t.id, {
+            task_title: t.task,
+            is_completed: t.completed,
+            day: t.day,
+            priority: t.priority,
+            category: t.category,
+            rewardXp: t.rewardXp,
+            rewardCoins: t.rewardCoins,
+            timestamp: new Date().toISOString()
+          });
+        });
+      });
+    }
   };
 
   const handleRotateWeeklyTasks = () => {
+    if (cooldownRemainingStr) {
+      onAddNotification("Rotation Cooldown Active", `Please wait ${cooldownRemainingStr} before rotating weekly curriculum models.`, "alert");
+      return;
+    }
     // Force rotative changes using high variety selection to change tasks completely
     const regenerated = getRandomWeeklyTasks(5);
     saveTasks(regenerated);
+
+    const now = Date.now();
+    setLastRotateTime(now);
+    localStorage.setItem(`nexa_weekly_rotate_last_${profile.username?.toLowerCase() || ''}`, now.toString());
+
     onAddNotification("Weekly Agenda Rotated", "Acquired brand new set of rotating tasks from WeeklyTaskModel!", "success");
   };
 
@@ -159,17 +239,11 @@ export const AutonomousWeeklyPlanner: React.FC<WeeklyPlannerProps> = ({
           <div className="flex gap-2 flex-wrap sm:flex-nowrap">
             <button
               onClick={handleRotateWeeklyTasks}
-              className="flex items-center gap-1.5 py-2 px-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-bold text-xs rounded-xl border border-rose-500/20 transition-all cursor-pointer font-mono"
+              disabled={!!cooldownRemainingStr}
+              className={`flex items-center gap-1.5 py-2 px-3 font-bold text-xs rounded-xl border transition-all font-mono ${cooldownRemainingStr ? 'bg-gray-500/10 text-gray-400 border-gray-500/10 cursor-not-allowed opacity-70' : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border-rose-500/20 cursor-pointer'}`}
             >
-              <RefreshCw className="w-3.5 h-3.5 animate-[spin_10s_linear_infinite]" />
-              ROTATE WEEKLY MODEL
-            </button>
-            <button
-              onClick={handleAISmartReschedule}
-              className="flex items-center gap-1.5 py-2 px-4 bg-cyan-400 hover:bg-cyan-300 text-black font-bold text-xs rounded-xl transition-all cursor-pointer border-none"
-            >
-              <Sparkles className="w-3.5 h-3.5 animate-pulse" />
-              AURA CURRICULUM SYNC
+              <RefreshCw className={`w-3.5 h-3.5 ${cooldownRemainingStr ? '' : 'animate-[spin_10s_linear_infinite]'}`} />
+              {cooldownRemainingStr ? `ROTATE COOLDOWN: ${cooldownRemainingStr}` : 'ROTATE WEEKLY MODEL'}
             </button>
           </div>
         </div>

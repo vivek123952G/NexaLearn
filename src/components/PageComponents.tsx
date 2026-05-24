@@ -1480,6 +1480,75 @@ export const DailyRewardHub: React.FC<DailyRewardHubProps> = ({
 
   const [activeWait, setActiveWait] = useState(false);
   const [activeTab, setActiveTab] = useState<"t1" | "t2" | "t3">("t1"); // T1: 1-10, T2: 11-20, T3: 21-30
+  
+  const [adPlaying, setAdPlaying] = useState(false);
+  const [adCountdown, setAdCountdown] = useState(0);
+
+  const handleWatchAd = async () => {
+    if (!profile.username) {
+      alert("Please initialize your node username first!");
+      return;
+    }
+
+    const adCount = profile.daily_ad_count || 0;
+    const lastAdTime = profile.last_ad_timestamp || "";
+
+    const todayStr = new Date().toISOString().split("T")[0];
+    let currentCount = adCount;
+
+    if (lastAdTime && lastAdTime.split("T")[0] !== todayStr) {
+      currentCount = 0;
+    }
+
+    if (currentCount >= 10) {
+      onAddNotification("Ad Limit Encountered 🚫", "Daily limit reached! Come back tomorrow.", "alert");
+      alert("Daily ad limit reached! Come back tomorrow.");
+      return;
+    }
+
+    setAdPlaying(true);
+    setAdCountdown(5);
+
+    const countdownTimer = setInterval(() => {
+      setAdCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(countdownTimer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    setTimeout(async () => {
+      clearInterval(countdownTimer);
+      setAdPlaying(false);
+      const nextCount = currentCount + 1;
+      const nextCoins = (profile.coins || 0) + 50;
+
+      try {
+        const { syncUserProfileUpdate } = await import("../lib/firebase");
+        await syncUserProfileUpdate(profile.username, {
+          daily_ad_count: nextCount,
+          last_ad_timestamp: new Date().toISOString(),
+          nexa_coins: nextCoins,
+          coins: nextCoins
+        });
+
+        onSaveProfile({
+          ...profile,
+          coins: nextCoins,
+          daily_ad_count: nextCount,
+          last_ad_timestamp: new Date().toISOString()
+        });
+
+        onAddNotification("Nexa Coins Claimed! 💰", `Earned +50 NEXA from video ad! (${nextCount}/10 today)`, "success");
+        alert(`Success! Gained +50 NEXA Coins! Daily views: ${nextCount}/10`);
+      } catch (err) {
+        console.error("Ad coin synchronization failed:", err);
+        onAddNotification("Ad Sync Error", "Failed to update wallet parameters.", "alert");
+      }
+    }, 5000);
+  };
 
   // Auto detect broken streak lapse on mount/update of lastCheckTime
   useEffect(() => {
@@ -1744,6 +1813,80 @@ export const DailyRewardHub: React.FC<DailyRewardHubProps> = ({
             💰 Inject +1M Nexa Coins (Test Premium VIP Checkout)
           </button>
         </div>
+      </div>
+
+      {/* 📹 REWARDED ADS ENGINE INTEGRATION */}
+      <div className="p-5 bg-gradient-to-r from-purple-950/40 via-black/40 to-blue-950/40 border border-purple-500/20 rounded-[28px] text-left space-y-3.5 mb-5 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/10 blur-2xl pointer-events-none" />
+        
+        <div className="flex justify-between items-start">
+          <div>
+            <span className="text-[9px] font-mono text-purple-400 uppercase tracking-widest font-black bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/20">
+              🏆 REWARDED ADS MODULE
+            </span>
+            <span className="text-sm font-black text-white mt-1.5 block flex items-center gap-1.5">
+              Watch Ad & Earn (+50 NEXA COINS)
+            </span>
+            <p className="text-[10px] text-gray-400 mt-1">
+              Unlock quick bonus coins with interactive ad simulations. Limit 10 ads daily.
+            </p>
+          </div>
+          <div className="text-right">
+            <span className="text-[10px] text-gray-400 block font-mono">CYCLE PROGRESS</span>
+            <span className="text-xs font-mono font-black text-purple-400">
+              {(() => {
+                const todayStr = new Date().toISOString().split("T")[0];
+                const count = profile.daily_ad_count || 0;
+                const lastTime = profile.last_ad_timestamp || "";
+                return (lastTime && lastTime.split("T")[0] !== todayStr) ? "0 / 10" : `${count} / 10`;
+              })()}
+            </span>
+          </div>
+        </div>
+
+        {/* Progress Bar of Daily Ad Views */}
+        <div className="w-full bg-black/40 rounded-full h-2 overflow-hidden border border-white/5 p-0.5">
+          <div 
+            className="h-full rounded-full bg-gradient-to-r from-purple-500 to-cyan-400 transition-all duration-500"
+            style={{
+              width: `${Math.min(100, ((profile.last_ad_timestamp || "").split("T")[0] !== new Date().toISOString().split("T")[0] ? 0 : profile.daily_ad_count || 0) * 10)}%`
+            }}
+          />
+        </div>
+
+        {/* Active Play/Watch Trigger and Countdown HUD */}
+        {adPlaying ? (
+          <div className="py-4 px-4 bg-purple-950/30 text-purple-400 border border-purple-500/30 rounded-2xl flex flex-col items-center justify-center gap-2 select-none animate-pulse">
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-purple-500"></span>
+              </span>
+              <span className="font-mono font-black text-xs uppercase tracking-widest">
+                📹 PLAYING AD SYSTEM SIMULATOR...
+              </span>
+            </div>
+            <span className="text-2xl font-black font-mono animate-bounce">{adCountdown}s</span>
+            <span className="text-[9px] text-gray-500 max-w-xs text-center leading-relaxed font-mono">
+              Analyzing high-speed academic patterns to calibrate educational rewards...
+            </span>
+          </div>
+        ) : (profile.daily_ad_count >= 10 && (profile.last_ad_timestamp || "").split("T")[0] === new Date().toISOString().split("T")[0]) ? (
+          <div className="p-3.5 bg-red-950/20 border border-red-500/20 text-red-400 rounded-2xl text-center space-y-1 font-mono">
+            <span className="text-sm">⚠️</span>
+            <p className="text-xs font-black uppercase tracking-wider">DAILY AD VIEW LIMIT REACHED!</p>
+            <p className="text-[10px] text-gray-500 leading-normal">
+              All 10 slots used today. Recharges tomorrow!
+            </p>
+          </div>
+        ) : (
+          <button
+            onClick={handleWatchAd}
+            className="w-full py-3 bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white font-extrabold text-xs uppercase rounded-xl border-none cursor-pointer transition-all active:scale-95 shadow-md shadow-purple-500/20 font-mono tracking-wider flex items-center justify-center gap-2"
+          >
+            🎬 WATCH BROADCAST & CLAIM +50 COINS
+          </button>
+        )}
       </div>
 
       <div className="p-3 bg-black/40 rounded-xl border border-white/5 text-left text-[11px] text-gray-400 font-mono leading-relaxed">

@@ -1,0 +1,81 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper: Valid alphanumeric ID checks to block ID poisoning
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Helper: User Document Schema Validation
+    function isValidUser(data) {
+      return data.keys().hasAll(['username'])
+        && data.username is string
+        && (!data.keys().contains('name') || data.name is string)
+        && (!data.keys().contains('nexa_coins') || data.nexa_coins is int)
+        && (!data.keys().contains('current_streak') || data.current_streak is int)
+        && (!data.keys().contains('daily_ad_count') || data.daily_ad_count is int)
+        && (!data.keys().contains('last_ad_timestamp') || data.last_ad_timestamp is string);
+    }
+
+    // Helper: Task Document Schema Validation
+    function isValidTask(data) {
+      return data.keys().hasAll(['title', 'completed'])
+        && data.title is string
+        && data.completed is bool;
+    }
+
+    // Helper: Chat Document Schema Validation
+    function isValidChat(data) {
+      return data.keys().hasAll(['sender', 'text'])
+        && data.sender is string
+        && data.text is string;
+    }
+
+    // Helper: Report Document Schema Validation
+    function isValidReport(data) {
+      return data.keys().hasAll(['reporter', 'targetId', 'reason', 'timestamp'])
+        && data.reporter is string
+        && data.targetId is string
+        && data.reason is string
+        && data.reason.size() >= 10
+        && data.reason.size() <= 1000
+        && data.timestamp is string;
+    }
+
+    // User profiles collection
+    match /users/{username} {
+      allow get, list, create: if isValidId(username) && (request.resource == null || isValidUser(request.resource.data));
+      allow update: if isValidId(username) && isValidUser(request.resource.data);
+      allow delete: if isValidId(username);
+
+      // Tasks sub-collection
+      match /tasks/{taskId} {
+        allow get, list, create, delete: if isValidId(username) && isValidId(taskId) && (request.resource == null || isValidTask(request.resource.data));
+        allow update: if isValidId(username) && isValidId(taskId) && isValidTask(request.resource.data);
+      }
+
+      // Chats sub-collection
+      match /chats/{chatId} {
+        allow get, list, create, delete: if isValidId(username) && isValidId(chatId) && (request.resource == null || isValidChat(request.resource.data));
+        allow update: if isValidId(username) && isValidId(chatId) && isValidChat(request.resource.data);
+      }
+    }
+
+    // Global reports collection
+    match /reports/{reportId} {
+      allow get, list, create: if isValidId(reportId) && (request.resource == null || isValidReport(request.resource.data));
+    }
+
+    // Telemetry errors logging collection
+    match /errors/{errorId} {
+      allow create: if isValidId(errorId);
+      allow read: if false; // Deny public reads to telemetry logs to isolate PII
+    }
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Premium profile database tracking student stats, nexa coins, streaks, and customization themes",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string", "description": "Lowercase sanitized alphanumeric username key" },
+        "email": { "type": "string", "description": "Student notification email node" },
+        "avatar": { "type": "string", "description": "Avatar vector avatar graphics url seed" },
+        "xp": { "type": "number", "description": "Cumulative student experience points system" },
+        "nexa_coins": { "type": "number", "description": "Atomically secure Nexa coins wallet reserve" },
+        "coins": { "type": "number", "description": "Synchronous local nexa coin wallet proxy" },
+        "current_streak": { "type": "number", "description": "Consecutive days tracking parameter" },
+        "streak": { "type": "number", "description": "Multiplier streak days cache proxy" },
+        "rank": { "type": "number", "description": "Estimated global leaderboard placement" },
+        "league": { "type": "string", "enum": ["Bronze", "Silver", "Gold", "Titan", "Legend"] },
+        "premiumTier": { "type": "string", "enum": ["FREE", "NEXA_PLUS", "NEXA_PRO", "NEXA_LEGEND"] },
+        "unlockedThemes": { "type": "array", "description": "Purchased premium dashboard custom skins list" },
+        "activeTheme": { "type": "string", "description": "Currently rendered skin configuration" },
+        "cosmetics": { "type": "array", "description": "Owned visual avatars frames and title glows" },
+        "hp": { "type": "number", "description": "Focus capacity systems tracker node" },
+        "daily_ad_count": { "type": "number", "description": "Current ad claims locked inside 24h clock cycle" },
+        "last_ad_timestamp": { "type": "string", "description": "ISO timestamp representing the last rewarded play action" },
+        "last_active_date": { "type": "string", "description": "Calendar date split string representing last log activity" }
+      },
+      "required": ["username"]
+    },
+    "StudyTask": {
+      "title": "StudyTask",
+      "description": "Student assigned tasks, micro-roadmaps, and coursework study guides",
+      "type": "object",
+      "properties": {
+        "task_title": { "type": "string" },
+        "is_completed": { "type": "boolean" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["task_title", "is_completed"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Social chats log streams across private threads and group study rooms",
+      "type": "object",
+      "properties": {
+        "sender": { "type": "string" },
+        "text_message": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "active_avatar": { "type": "string" }
+      },
+      "required": ["sender", "text_message"]
+    },
+    "ContentReport": {
+      "title": "ContentReport",
+      "description": "Moderation reports flagged on community posts or study reels with description reasons",
+      "type": "object",
+      "properties": {
+        "reporter": { "type": "string" },
+        "targetId": { "type": "string" },
+        "targetType": { "type": "string", "enum": ["feed_post", "study_reel"] },
+        "reason": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["reporter", "targetId", "reason", "timestamp"]
+    }
+  },
+  "firestore": {
+    "users/{username}": {
+      "schema": "UserProfile",
+      "description": "Individual premium user profile node"
+    },
+    "users/{username}/tasks/{taskId}": {
+      "schema": "StudyTask",
+      "description": "Coursework tasks list associated with the student profile"
+    },
+    "users/{username}/chats/{chatId}": {
+      "schema": "ChatMessage",
+      "description": "Active chat sequences logged globally with active avatar cache"
+    },
+    "reports/{reportId}": {
+      "schema": "ContentReport",
+      "description": "Global reporting directory for spam validation"
+    }
+  }
+}

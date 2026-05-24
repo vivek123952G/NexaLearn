@@ -193,6 +193,79 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
 }) => {
   const [subTab, setSubTab] = useState<'feed' | 'reels' | 'chats' | 'friends'>(initialSubTab);
   
+  // Reports Confirmation Panel & 24h Rate Limiting States
+  const [reportingItem, setReportingItem] = useState<{ id: string; type: 'feed_post' | 'study_reel' } | null>(null);
+  const [reportReason, setReportReason] = useState("");
+  const [reportSuccessToast, setReportSuccessToast] = useState(false);
+  const [rateLimitCountdown, setRateLimitCountdown] = useState<string | null>(null);
+
+  const handleTriggerReport = (itemId: string, type: 'feed_post' | 'study_reel') => {
+    setReportingItem({ id: itemId, type: type });
+    setReportReason("");
+    setReportSuccessToast(false);
+
+    const key = `nexa_last_report_time_${profile.username.toLowerCase()}`;
+    const lastReportTimeStr = localStorage.getItem(key);
+    
+    if (lastReportTimeStr) {
+      const lastReportTime = parseInt(lastReportTimeStr, 10);
+      const diff = Date.now() - lastReportTime;
+      const limit = 24 * 60 * 60 * 1000;
+      if (diff < limit) {
+        const remainingMs = limit - diff;
+        const hours = Math.floor(remainingMs / (1000 * 60 * 60));
+        const minutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((remainingMs % (1000 * 60)) / 1000);
+        setRateLimitCountdown(`${hours}h ${minutes}m ${seconds}s`);
+      } else {
+        setRateLimitCountdown(null);
+      }
+    } else {
+      setRateLimitCountdown(null);
+    }
+  };
+
+  const handleConfirmSubmitReport = async () => {
+    if (!reportingItem) return;
+    if (reportReason.trim().length < 10) {
+      alert("Please provide a reason of at least 10 characters before submitting.");
+      return;
+    }
+
+    try {
+      const reportId = `rep_${Date.now()}`;
+      const newReportData = {
+        reporter: profile.username || "AnonymousStudent",
+        targetId: reportingItem.id,
+        targetType: reportingItem.type,
+        reason: reportReason.trim(),
+        timestamp: new Date().toISOString()
+      };
+
+      const { db, handleFirestoreError, OperationType } = await import("../lib/firebase");
+      const { doc, setDoc } = await import("firebase/firestore");
+      const path = `reports/${reportId}`;
+      await setDoc(doc(db, "reports", reportId), newReportData).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, path);
+        throw err;
+      });
+
+      localStorage.setItem(`nexa_last_report_time_${profile.username.toLowerCase()}`, Date.now().toString());
+
+      setReportSuccessToast(true);
+      onAddNotification("Report Submitted", "Your moderation flag has been securely routed to administration.", "success");
+
+      setTimeout(() => {
+        setReportingItem(null);
+        setReportSuccessToast(false);
+      }, 3000);
+
+    } catch (err) {
+      console.error("Firestore report submission error:", err);
+      alert("Submission error. Suboptimal connection nodes.");
+    }
+  };
+
   // Interactive comment input states
   const [postCommentText, setPostCommentText] = useState<Record<string, string>>({});
   const [reelCommentText, setReelCommentText] = useState<Record<string, string>>({});
@@ -1019,7 +1092,7 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
                 </div>
 
                 {/* ─── DYNAMIC ACTION BUTTON BAR ─── */}
-                <div className="flex items-center justify-between border-t border-b border-white/5 py-3.5 my-4 text-xs font-mono select-none">
+                <div id="feed-post-footer" className="flex items-center justify-between border-t border-b border-white/5 py-3.5 my-4 text-xs font-mono select-none">
                   <div className="flex items-center gap-5">
                     
                     {/* HEART LIKE BUTTON */}
@@ -1047,14 +1120,25 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
                     </button>
                   </div>
 
-                  {/* SHARE COPY LINK */}
-                  <button 
-                    onClick={() => handleShareNode(post.content.substring(0, 30))}
-                    className="flex items-center gap-1.5 text-[10px] text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer border-none bg-transparent"
-                  >
-                    <Share2 className="w-4 h-4" />
-                    <span>SHARE</span>
-                  </button>
+                  <div className="flex items-center gap-3">
+                    {/* CONFIRMATION REPORT BUTTON */}
+                    <button 
+                      onClick={() => handleTriggerReport(post.id, "feed_post")}
+                      className="flex items-center gap-1 text-[10px] text-rose-400 hover:text-rose-300 transition-colors cursor-pointer border-none bg-transparent font-black uppercase font-mono"
+                    >
+                      <span>🚩</span>
+                      <span>REPORT</span>
+                    </button>
+
+                    {/* SHARE COPY LINK */}
+                    <button 
+                      onClick={() => handleShareNode(post.content.substring(0, 30))}
+                      className="flex items-center gap-1.5 text-[10px] text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer border-none bg-transparent"
+                    >
+                      <Share2 className="w-4 h-4" />
+                      <span>SHARE</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* ─── COMMENTS LIST ─── */}
@@ -1132,7 +1216,7 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
 
               if (filteredReels.length === 0) {
                 return (
-                  <div className="text-center py-12 bg-white/2 rounded-3xl border border-white/5">
+                  <div className="text-center py-12 bg-white/2 rounded-3xl border border-white/5 w-full">
                     <p className="text-xs text-gray-400">No matching student media broadcasts found.</p>
                   </div>
                 );
@@ -1175,7 +1259,7 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
                             )}
                           </div>
                           
-                          <p className="text-[11px] text-gray-100 line-clamp-3 leading-relaxed drop-shadow-[0_2px_4px_rgba(0,0,0,1)] font-medium">
+                          <p className="text-[11px] text-gray-100 line-clamp-3 leading-relaxed drop-shadow-[0_2px_4px_rgba(0,0,0,1)] font-medium font-sans">
                             {currentReel.caption}
                           </p>
 
@@ -1188,49 +1272,58 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
                           </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* ─── INS-STYLE FLOATING SIDEBAR ACTIONS ─── */}
-                    <div className="absolute right-8 bottom-32 flex flex-col gap-5 text-center z-30 bg-black/75 p-3 rounded-2xl border border-white/15 backdrop-blur shadow-2xl">
-                      
-                      {/* LIKE BUTTON */}
-                      <button 
-                        onClick={() => handleLikeReel(currentReel.id)} 
-                        className="flex flex-col items-center bg-transparent border-none cursor-pointer text-gray-300 hover:text-white"
-                      >
-                        <Heart className={`w-5 h-5 ${currentReel.liked ? 'text-red-500 fill-current' : 'text-gray-300'}`} />
-                        <span className="text-[9px] font-mono font-bold mt-1 text-gray-300">{currentReel.likes}</span>
-                      </button>
+                      {/* ─── INS-STYLE FLOATING SIDEBAR ACTIONS ─── */}
+                      <div className="absolute right-8 bottom-32 flex flex-col gap-5 text-center z-30 bg-black/75 p-3 rounded-2xl border border-white/15 backdrop-blur shadow-2xl">
+                        
+                        {/* LIKE BUTTON */}
+                        <button 
+                          onClick={() => handleLikeReel(currentReel.id)} 
+                          className="flex flex-col items-center bg-transparent border-none cursor-pointer text-gray-300 hover:text-white"
+                        >
+                          <Heart className={`w-5 h-5 ${currentReel.liked ? 'text-red-500 fill-current' : 'text-gray-300'}`} />
+                          <span className="text-[9px] font-mono font-bold mt-1 text-gray-300">{currentReel.likes}</span>
+                        </button>
 
-                      {/* DISLIKE BUTTON */}
-                      <button 
-                        onClick={() => handleDislikeReel(currentReel.id)} 
-                        className="flex flex-col items-center bg-transparent border-none cursor-pointer text-gray-300 hover:text-white"
-                      >
-                        <ThumbsDown className={`w-5 h-5 ${hasReelDisliked ? 'text-[#FF4A4A] fill-current' : 'text-gray-300'}`} />
-                        <span className="text-[9px] font-mono font-bold mt-1 text-gray-300">{reelDislikesCount}</span>
-                      </button>
+                        {/* DISLIKE BUTTON */}
+                        <button 
+                          onClick={() => handleDislikeReel(currentReel.id)} 
+                          className="flex flex-col items-center bg-transparent border-none cursor-pointer text-gray-300 hover:text-white"
+                        >
+                          <ThumbsDown className={`w-5 h-5 ${hasReelDisliked ? 'text-[#FF4A4A] fill-current' : 'text-gray-300'}`} />
+                          <span className="text-[9px] font-mono font-bold mt-1 text-gray-300">{reelDislikesCount}</span>
+                        </button>
 
-                      {/* SHARE BUTTON */}
-                      <button 
-                        onClick={() => handleShareNode(currentReel.caption.substring(0, 30), currentReel.videoUrl)} 
-                        className="flex flex-col items-center bg-transparent border-none cursor-pointer text-cyan-400 hover:text-cyan-300"
-                      >
-                        <Share2 className="w-5 h-5 text-cyan-400" />
-                        <span className="text-[9px] font-mono mt-1 font-bold">SHARE</span>
-                      </button>
+                        {/* SHARE BUTTON */}
+                        <button 
+                          onClick={() => handleShareNode(currentReel.caption.substring(0, 30), currentReel.videoUrl)} 
+                          className="flex flex-col items-center bg-transparent border-none cursor-pointer text-cyan-400 hover:text-cyan-300"
+                        >
+                          <Share2 className="w-5 h-5 text-cyan-400" />
+                          <span className="text-[9px] font-mono mt-1 font-bold">SHARE</span>
+                        </button>
 
-                      {/* SAVE ACTION */}
-                      <button 
-                        onClick={() => {
-                          setReels(prev => prev.map(r => r.id === currentReel.id ? { ...r, saved: !r.saved } : r));
-                          onAddNotification("Reel Saved", "Media saved securely to private vault.", "info");
-                        }}
-                        className="flex flex-col items-center bg-transparent border-none cursor-pointer text-gray-300"
-                      >
-                        <Bookmark className={`w-5 h-5 ${currentReel.saved ? 'text-[#CCFF00] fill-current' : 'text-gray-300'}`} />
-                        <span className="text-[9px] font-mono mt-1 font-bold">{currentReel.saved ? "SAVED" : "SAVE"}</span>
-                      </button>
+                        {/* REPORT ACTION */}
+                        <button 
+                          onClick={() => handleTriggerReport(currentReel.id, "study_reel")}
+                          className="flex flex-col items-center bg-transparent border-none cursor-pointer text-rose-400 hover:text-rose-300 font-bold"
+                        >
+                          <span className="text-lg leading-none">🚩</span>
+                          <span className="text-[9px] font-mono mt-1 font-black">REPORT</span>
+                        </button>
+
+                        {/* SAVE ACTION */}
+                        <button 
+                          onClick={() => {
+                            setReels(prev => prev.map(r => r.id === currentReel.id ? { ...r, saved: !r.saved } : r));
+                            onAddNotification("Reel Saved", "Media saved securely to private vault.", "info");
+                          }}
+                          className="flex flex-col items-center bg-transparent border-none cursor-pointer text-gray-300"
+                        >
+                          <Bookmark className={`w-5 h-5 ${currentReel.saved ? 'text-[#CCFF00] fill-current' : 'text-gray-300'}`} />
+                          <span className="text-[9px] font-mono mt-1 font-bold">{currentReel.saved ? "SAVED" : "SAVE"}</span>
+                        </button>
+                      </div>
                     </div>
 
                     {/* ─── REEL COMMENT INLINE DRAWER (INSTAGRAM DESIGN) ─── */}
