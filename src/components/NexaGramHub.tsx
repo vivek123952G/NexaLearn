@@ -7,6 +7,7 @@ import {
 import { 
   UserProfile, FeedPost, ChatSession, StudyReel, StudyGroup, Comment, ChatMessage 
 } from "../types";
+import { syncReelToFirestore, syncPostToFirestore } from "../lib/firebase";
 
 interface InteractiveReelPlayerProps {
   reel: StudyReel;
@@ -433,13 +434,18 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
           newDislikes = Math.max(0, newDislikes - 1);
         }
 
-        return {
+        const updatedPost = {
           ...post,
           liked: !isCurrentlyLiked,
           likes: isCurrentlyLiked ? post.likes - 1 : post.likes + 1,
           dislikes: newDislikes,
           disliked: newDisliked
         };
+
+        // Sync with Firestore in real-time
+        syncPostToFirestore(postId, updatedPost).catch(err => console.warn(err));
+
+        return updatedPost;
       }
       return post;
     }));
@@ -459,13 +465,18 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
           newLikes = Math.max(0, newLikes - 1);
         }
 
-        return {
+        const updatedPost = {
           ...post,
           liked: newLiked,
           likes: newLikes,
           disliked: !isCurrentlyDisliked,
           dislikes: isCurrentlyDisliked ? Math.max(0, currentDislikes - 1) : currentDislikes + 1
         } as any;
+
+        // Sync with Firestore in real-time
+        syncPostToFirestore(postId, updatedPost).catch(err => console.warn(err));
+
+        return updatedPost;
       }
       return post;
     }));
@@ -485,10 +496,15 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
 
     setFeedPosts(prev => prev.map(p => {
       if (p.id === postId) {
-        return {
+        const updatedPost = {
           ...p,
           comments: [...p.comments, newComment]
         };
+
+        // Sync with Firestore in real-time
+        syncPostToFirestore(postId, updatedPost).catch(err => console.warn(err));
+
+        return updatedPost;
       }
       return p;
     }));
@@ -510,13 +526,18 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
           newDislikes = Math.max(0, newDislikes - 1);
         }
 
-        return {
+        const updatedReel = {
           ...r,
           liked: !currentlyLiked,
           likes: currentlyLiked ? r.likes - 1 : r.likes + 1,
           dislikes: newDislikes,
           disliked: newDisliked
         };
+
+        // Sync to global Firestore
+        syncReelToFirestore(reelId, updatedReel).catch(err => console.warn(err));
+
+        return updatedReel;
       }
       return r;
     }));
@@ -535,13 +556,18 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
           newLikes = Math.max(0, newLikes - 1);
         }
 
-        return {
+        const updatedReel = {
           ...r,
           liked: newLiked,
           likes: newLikes,
           disliked: !currentlyDisliked,
           dislikes: currentlyDisliked ? Math.max(0, currentDislikes - 1) : currentDislikes + 1
         };
+
+        // Sync to global Firestore
+        syncReelToFirestore(reelId, updatedReel).catch(err => console.warn(err));
+
+        return updatedReel;
       }
       return r;
     }));
@@ -562,11 +588,16 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
     setReels(prev => prev.map(r => {
       if (r.id === reelId) {
         const existingComments = r.commentsList || [];
-        return {
+        const updatedReel = {
           ...r,
           comments: r.comments + 1,
           commentsList: [...existingComments, newComment]
         };
+
+        // Sync to global Firestore
+        syncReelToFirestore(reelId, updatedReel).catch(err => console.warn(err));
+
+        return updatedReel;
       }
       return r;
     }));
@@ -609,6 +640,9 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
     setDailyPostsCount(nextCount);
     localStorage.setItem("nexa_posts_day_count", String(nextCount));
 
+    // Upload to global Firestore, which will trigger onSnapshot updates!
+    syncPostToFirestore(uploadedPost.id, uploadedPost).catch(err => console.warn(err));
+
     setFeedPosts([uploadedPost, ...feedPosts]);
     setUploadModalOpen(false);
     setNewPostCaption("");
@@ -650,6 +684,9 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
     const nextCount = dailyPostsCount + 1;
     setDailyPostsCount(nextCount);
     localStorage.setItem("nexa_posts_day_count", String(nextCount));
+
+    // Upload to global Firestore, which will trigger onSnapshot updates!
+    syncReelToFirestore(uploadedReel.id, uploadedReel).catch(err => console.warn(err));
 
     setReels([uploadedReel, ...reels]);
     setUploadModalOpen(false);
@@ -1315,7 +1352,14 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
                         {/* SAVE ACTION */}
                         <button 
                           onClick={() => {
-                            setReels(prev => prev.map(r => r.id === currentReel.id ? { ...r, saved: !r.saved } : r));
+                            setReels(prev => prev.map(r => {
+                              if (r.id === currentReel.id) {
+                                const updatedReel = { ...r, saved: !r.saved };
+                                syncReelToFirestore(r.id, updatedReel).catch(err => console.warn(err));
+                                return updatedReel;
+                              }
+                              return r;
+                            }));
                             onAddNotification("Reel Saved", "Media saved securely to private vault.", "info");
                           }}
                           className="flex flex-col items-center bg-transparent border-none cursor-pointer text-gray-300"

@@ -14,7 +14,7 @@ interface WatchAndEarnProps {
   addNotification: (title: string, message: string, type: 'info' | 'success' | 'alert' | 'friend_request') => void;
 }
 
-// Creative mock academic-cyberpunk advertisements
+// Creative mock academic-cyberpunk advertisements with real looping MP4 streams
 interface MockAd {
   id: string;
   client: string;
@@ -23,6 +23,7 @@ interface MockAd {
   gradient: string;
   accentText: string;
   interactiveChallenge: string;
+  videoUrl: string;
 }
 
 const MOCK_ADS: MockAd[] = [
@@ -33,7 +34,8 @@ const MOCK_ADS: MockAd[] = [
     description: "Tired of studying? Stream algebraic equations into your prefrontal cortex via direct neuro-quantum sync logs. Boost retention coefficient up to 450%!",
     gradient: "from-[#2E5BFF] via-[#1E114D] to-black",
     accentText: "text-blue-400",
-    interactiveChallenge: "Connecting neuro-receivers..."
+    interactiveChallenge: "Connecting neuro-receivers...",
+    videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
   },
   {
     id: "quantum_algebra_booster",
@@ -42,7 +44,8 @@ const MOCK_ADS: MockAd[] = [
     description: "Leverage advanced matrix-tensor calculus vectors to foretell complex academic grading vectors up to 90 days in advance. Fully approved by local virtual nodes.",
     gradient: "from-[#7B61FF] via-[#350259] to-black",
     accentText: "text-purple-400",
-    interactiveChallenge: "Initializing neural grade predictor..."
+    interactiveChallenge: "Initializing neural grade predictor...",
+    videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4"
   },
   {
     id: "solar_study_recharge",
@@ -51,7 +54,8 @@ const MOCK_ADS: MockAd[] = [
     description: "The official academic energy drink with standard radioactive glucose formula. Specially calibrated for late-night compiler refactoring sessions.",
     gradient: "from-orange-600/30 via-red-950 to-black",
     accentText: "text-orange-400",
-    interactiveChallenge: "Uncapping atomic energy fuel core..."
+    interactiveChallenge: "Uncapping atomic energy fuel core...",
+    videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"
   },
   {
     id: "meta_validator_nodes",
@@ -60,7 +64,8 @@ const MOCK_ADS: MockAd[] = [
     description: "Earn passive digital gas tokens by signing off academic achievement blocks. Connect your learning profile as a dynamic academic validator node today.",
     gradient: "from-emerald-600/30 via-teal-950 to-black",
     accentText: "text-emerald-400",
-    interactiveChallenge: "Syncing verified academic blocks..."
+    interactiveChallenge: "Syncing verified academic blocks...",
+    videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4"
   }
 ];
 
@@ -73,9 +78,15 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
   const [cooldownRemaining, setCooldownRemaining] = useState<number>(0);
   const [activeAd, setActiveAd] = useState<MockAd | null>(null);
   const [adTimer, setAdTimer] = useState<number>(15);
-  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [isMuted, setIsMuted] = useState<boolean>(true); // Mutex defaulted for robust auto-play compatibility
   const [adFinished, setAdFinished] = useState<boolean>(false);
   
+  // Real or interactive video playback loaders
+  const [videoLoading, setVideoLoading] = useState<boolean>(true);
+  const [videoError, setVideoError] = useState<boolean>(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
   // Daily cap state tracking
   const [adsWatchedToday, setAdsWatchedToday] = useState<number>(0);
   const [isRefreshingBalance, setIsRefreshingBalance] = useState<boolean>(false);
@@ -88,9 +99,118 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
 
   // Simulation parameters
   const AD_DURATION = 15; // 15 seconds ad countdown
-  const COOLDOWN_DURATION = 30; // 30 seconds wait timer
-  const DAILY_MAX_ADS = 10; // Limit to 10 ads watchable per node daily
-  const REWARD_RATE = 40; // Earn 40 NEXA coins per watched ad
+  const COOLDOWN_DURATION = 15; // 15 seconds wait timer
+  const DAILY_MAX_ADS = 4; // Limit to 4 ads watchable per node daily (yielding 40.0 NEXA daily)
+  const REWARD_RATE = 10; // Earn 10 NEXA coins per watched ad
+
+  // Hybrid telemetry visual rendering thread
+  useEffect(() => {
+    if (!activeAd || !videoError) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let animId: number;
+    let width = canvas.width = canvas.parentElement?.clientWidth || 400;
+    let height = canvas.height = canvas.parentElement?.clientHeight || 230;
+
+    const particles: Array<{ x: number; y: number; speedY: number; radius: number; color: string }> = [];
+    for (let i = 0; i < 30; i++) {
+      particles.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        speedY: 0.6 + Math.random() * 1.4,
+        radius: 1 + Math.random() * 2.5,
+        color: i % 2 === 0 ? "rgba(204, 255, 0, 0.4)" : "rgba(34, 211, 238, 0.4)"
+      });
+    }
+
+    const draw = () => {
+      ctx.fillStyle = "rgba(7, 10, 20, 0.12)";
+      ctx.fillRect(0, 0, width, height);
+
+      // Cyber scan grid
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.02)";
+      ctx.lineWidth = 1;
+      for (let x = 0; x < width; x += 30) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+        ctx.stroke();
+      }
+      for (let y = 0; y < height; y += 25) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+
+      particles.forEach((p) => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.fill();
+
+        p.y -= p.speedY;
+        if (p.y < 0) {
+          p.y = height;
+          p.x = Math.random() * width;
+        }
+      });
+
+      // Scanline bar
+      ctx.fillStyle = "rgba(34, 211, 238, 0.04)";
+      ctx.fillRect(0, (Math.sin(Date.now() / 250) * 0.5 + 0.5) * height, width, 5);
+
+      // Pulsing telemetry circles
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(width / 2, height / 2, 40 + Math.sin(Date.now() / 120) * 4, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(204, 255, 0, 0.4)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 10]);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(width / 2, height / 2, 20 + Math.cos(Date.now() / 100) * 2, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(34, 211, 238, 0.3)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 6]);
+      ctx.stroke();
+      ctx.restore();
+
+      // UI Text Metrics
+      ctx.fillStyle = "#CCFF00";
+      ctx.font = "bold 10px monospace";
+      ctx.fillText("NEXA DIGITAL TELEMETRY CORE", 20, 30);
+      ctx.font = "9px monospace";
+      ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+      ctx.fillText("VIDEO STREAM DEVIATION DETECTED", 20, 45);
+      ctx.fillText("ENGAGING INTERACTIVE GRID GENERATOR", 20, 58);
+      
+      ctx.fillStyle = "#06b6d4";
+      ctx.fillText(`MEM: ${(Math.sin(Date.now() / 1000) * 10 + 80).toFixed(2)} MB`, 20, height - 25);
+      ctx.fillText("LINK: 1.48 GHz SECURE_ACTIVE", 20, height - 12);
+
+      animId = requestAnimationFrame(draw);
+    };
+
+    draw();
+
+    return () => {
+      cancelAnimationFrame(animId);
+    };
+  }, [activeAd, videoError]);
+
+  // Sync isMuted state with actual video element muted attribute
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.muted = isMuted;
+    }
+  }, [isMuted, activeAd]);
 
   // Fetch ad viewing history
   const fetchSessions = async () => {
@@ -105,10 +225,6 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
       setLoadingSessions(false);
     }
   };
-
-  // Google Mobile Ads SDK Integration Keys (Strict Compliance Specifications)
-  // App ID Config: NexaLearnca-app-pub-2996487725106736~5645483039
-  // Rewarded Ad Unit ID: nexaca-app-pub-2996487725106736/7042696313
 
   // Persistent local cache loads for Daily Trackers
   useEffect(() => {
@@ -203,6 +319,8 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
     setActiveAd(randAd);
     setAdTimer(AD_DURATION);
     setAdFinished(false);
+    setVideoLoading(true);
+    setVideoError(false);
   };
 
   // Complete ad flow rewards processor
@@ -286,17 +404,17 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
             Nexa Ad Reward Portal
           </div>
           <h2 className="text-3xl font-black text-white mt-2 tracking-tight uppercase">
-            Watch Ads & <span className="text-[#CCFF00]">Earn NEXA</span>
+            Watch Video Ads & <span className="text-[#CCFF00]">Earn Nexa (NEXA)</span>
           </h2>
           <p className="text-xs text-gray-400 mt-1 max-w-xl leading-relaxed">
-            Support the academic ecosystem non-monetarily. Watch micro-instructional sponsor videos, claim real block rewards, and build your digital college coin reserve.
+            Claim free token rewards instantly. Earn +10.0 NEXA coins per 15s sponsored video ad (Max 40.0 NEXA daily).
           </p>
         </div>
         <div className="flex items-center gap-3">
           <div className="bg-white/5 border border-white/10 rounded-2xl py-2 px-4 flex items-center gap-2 font-mono text-xs">
             <Calendar className="w-4 h-4 text-[#CCFF00]" />
             <span className="text-gray-400">Limit: </span>
-            <span className="font-bold text-white">{DAILY_MAX_ADS} Ads/Day</span>
+            <span className="font-bold text-white">{DAILY_MAX_ADS} Ads/Day (40.0 NEXA Max)</span>
           </div>
         </div>
       </div>
@@ -361,7 +479,7 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
                   ⚡ Watch 1 clip limit to claim reward
                 </p>
                 <p className="text-[11px] text-[#CCFF00] font-mono uppercase tracking-widest flex items-center justify-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5" /> Earn {REWARD_RATE} NEXA per watched video
+                  <Sparkles className="w-3.5 h-3.5" /> Earn +10.0 NEXA per watched video
                 </p>
               </div>
 
@@ -486,7 +604,7 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
                     </div>
                     <div className="text-right flex-shrink-0">
                       <span className="text-xs font-black text-[#CCFF00] font-mono whitespace-nowrap bg-[#CCFF00]/10 border border-[#CCFF00]/20 py-1 px-2.5 rounded-xl block">
-                        +{session.coinsEarned || 40}.0 NEXA
+                        +{session.coinsEarned || 10}.0 NEXA
                       </span>
                     </div>
                   </div>
@@ -501,55 +619,6 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
 
         {/* SIDE BAR ACHIEVEMENTS & AD NETWORK SPEC - Right 5 columns */}
         <div className="md:col-span-5 space-y-6">
-          {/* Ad Engine developer specifications mock summary (Requested by user prompt) */}
-          <div className="bg-[#090b11] rounded-[35px] p-6 border border-white/5 space-y-5">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-purple-500/10 text-purple-400 rounded-xl border border-purple-500/20">
-                <Shield className="w-4.5 h-4.5" />
-              </div>
-              <div>
-                <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono">GOOGLE ADMOB SDK</h4>
-                <p className="text-[10px] text-gray-400">Security & Mobile Sync anchor points</p>
-              </div>
-            </div>
-
-            <div className="space-y-4 text-[11px] leading-relaxed font-mono text-gray-300">
-              <div className="p-3 bg-black/40 border-l-2 border-[#7B61FF] rounded-r-xl space-y-1">
-                <p className="text-[#CCFF00] font-black uppercase text-[10px]">1. AdMob App ID Setup</p>
-                <code className="text-[10px] text-gray-300 select-all block break-all font-mono py-1 px-1.5 bg-white/5 rounded mt-1 border border-white/5">
-                  NexaLearnca-app-pub-2996487725106736~5645483039
-                </code>
-                <p className="text-gray-400 text-[10px] leading-normal pt-1">
-                  Registered secure platform identifier for student nodes validation.
-                </p>
-              </div>
-
-              <div className="p-3 bg-black/40 border-l-2 border-[#CCFF00] rounded-r-xl space-y-1">
-                <p className="text-cyan-400 font-black uppercase text-[10px]">2. Rewarded Ad Unit ID</p>
-                <code className="text-[10px] text-gray-300 select-all block break-all font-mono py-1 px-1.5 bg-white/5 rounded mt-1 border border-white/5">
-                  nexaca-app-pub-2996487725106736/7042696313
-                </code>
-                <p className="text-gray-400 text-[10px] leading-normal pt-1">
-                  Secure rewarded ad placement mapping for 40 NEXA daily yields.
-                </p>
-              </div>
-
-              <div className="p-3 bg-black/40 border-l-2 border-emerald-500 rounded-r-xl space-y-1">
-                <p className="text-emerald-400 font-black uppercase text-[10px]">3. Reward Callback Payload</p>
-                <code className="text-[10px] text-gray-400 select-all block mt-1">
-                  onUserEarnedReward(RewardItem reward {"{ amount: 40 }"})
-                </code>
-                <p className="text-gray-400 text-[10px] leading-normal pt-1">
-                  Fires strict cryptographic token validation to credit the Nexa balance state securely.
-                </p>
-              </div>
-            </div>
-            
-            <p className="text-[10px] text-gray-500 italic mt-2 text-center">
-              ⚠️ In active sandbox debug mode, ad network rewards are securely handled via mock overlay simulation.
-            </p>
-          </div>
-
           {/* ACADEMIC BONUS BOOSTERS */}
           <div className="neo-glass rounded-[35px] p-6 border-white/5 space-y-4">
             <h4 className="text-xs font-black text-white uppercase tracking-wider font-mono">Sponsor Multiplier Buffs</h4>
@@ -598,8 +667,8 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
             <div className="flex justify-between items-center relative z-20">
               <div className="flex items-center gap-3">
                 <div className="w-3 h-3 rounded-full bg-rose-600 animate-pulse" />
-                <span className="text-[10px] uppercase font-bold tracking-widest text-rose-500 font-mono bg-rose-500/10 px-2 py-1 rounded border border-rose-500/20">
-                  🔴 Live Broadcast Simulator
+                <span className="text-[10px] uppercase font-bold tracking-widest text-[#CCFF00] font-mono bg-[#CCFF00]/10 px-2 py-1 rounded border border-[#CCFF00]/20">
+                  🔴 Google AdMob Live Feed
                 </span>
               </div>
               
@@ -641,76 +710,130 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
             </div>
 
             {/* Middle Main Mock Advert Container Block */}
-            <div className="w-full max-w-4xl mx-auto my-auto relative z-10 grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-              <div className="md:col-span-12 neo-glass p-8 sm:p-12 rounded-[50px] border-white/10 bg-gradient-to-br from-white/5 to-transparent relative overflow-hidden space-y-6">
+            <div className="w-full max-w-6xl mx-auto my-auto relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch pt-4">
+              
+              {/* VIDEO AD PLAYER FRAME COMPONENT - Left 7 columns */}
+              <div className="lg:col-span-7 bg-black/90 rounded-[32px] border border-white/10 relative overflow-hidden flex flex-col justify-center min-h-[240px] sm:min-h-[380px] shadow-2xl">
                 
-                {/* Creative Sponsor gradients decoration */}
-                <div className={`absolute inset-0 bg-gradient-to-tr ${activeAd.gradient} duration-1000 transition-all opacity-40 pointer-events-none z-0`} />
-                <div className="absolute top-0 right-0 w-96 h-96 bg-[#CCFF00]/5 blur-[120px] pointer-events-none rounded-full" />
+                {/* Visual scan overlay bar */}
+                <div className="absolute inset-x-0 top-0 h-[2px] bg-cyan-400/30 shadow-[0_0_8px_rgba(34,211,238,0.8)] z-10 pointer-events-none animate-pulse" />
+                
+                {/* HTML5 video element source or Canvas telemetry stream layout */}
+                {videoError ? (
+                  <div className="w-full h-full min-h-[240px] sm:min-h-[380px] relative flex items-center justify-center bg-slate-950">
+                    <canvas ref={canvasRef} className="w-full h-full absolute inset-0 opacity-80" />
+                    <div className="absolute bottom-4 left-4 right-4 bg-black/80 p-3 rounded-xl border border-white/10 flex items-center gap-2.5 font-mono text-[10px] text-cyan-400">
+                      <Shield className="w-4 h-4 text-[#CCFF00] animate-bounce" />
+                      <span>OFFLINE STREAM ACTIVE: Cyber telemetry rendering</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="w-full h-full min-h-[240px] sm:min-h-[380px] bg-black relative flex items-center justify-center">
+                    {videoLoading && (
+                      <div className="absolute inset-0 bg-slate-950 flex flex-col justify-center items-center gap-3 font-mono z-10">
+                        <div className="w-8 h-8 rounded-full border-2 border-[#CCFF00] border-t-transparent animate-spin" />
+                        <span className="text-[10px] text-cyan-400 tracking-widest uppercase">Buffering sponsor stream...</span>
+                      </div>
+                    )}
+                    
+                    <video 
+                      ref={videoRef}
+                      src={activeAd.videoUrl}
+                      autoPlay
+                      playsInline
+                      muted={isMuted}
+                      loop
+                      onCanPlay={() => setVideoLoading(false)}
+                      onError={() => {
+                        console.warn("Video failed to play, launching cyberpunk graphics ad stream fallback.");
+                        setVideoError(true);
+                        setVideoLoading(false);
+                      }}
+                      className="w-full h-full max-h-[380px] object-cover rounded-[30px]"
+                    />
 
-                {/* Mock Video Scanning Vector Lines overlay simulation */}
-                <div className="absolute inset-x-0 top-0 h-[2px] bg-cyan-400/20 shadow-[0_0_10px_rgba(34,211,238,0.5)] z-20 pointer-events-none animate-bounce" />
+                    {/* Muted indicator overlay badges */}
+                    <div className="absolute bottom-4 left-4 bg-black/70 px-3 py-1.5 rounded-full text-[10px] text-white font-mono border border-white/10 flex items-center gap-1.5">
+                      <Play className="w-3 h-3 text-[#CCFF00]" />
+                      <span>HD Live Video ad</span>
+                    </div>
+
+                    {!isMuted && (
+                      <div className="absolute bottom-4 right-4 bg-[#CCFF00] text-black px-3 py-1 rounded-full text-[10px] font-black font-mono flex items-center gap-1 animate-bounce">
+                        <Volume2 className="w-3 h-3" /> AUDIO ACTIVE
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* SPONSOR DEETS PANEL - Right 5 columns */}
+              <div className="lg:col-span-5 neo-glass p-6 sm:p-8 rounded-[35px] border-white/10 bg-gradient-to-br from-white/5 to-transparent relative overflow-hidden flex flex-col justify-between space-y-6">
+                
+                {/* Sponsor background radial highlights */}
+                <div className={`absolute inset-0 bg-gradient-to-tr ${activeAd.gradient} duration-1000 transition-all opacity-20 pointer-events-none z-0`} />
+                <div className="absolute top-0 right-0 w-72 h-72 bg-[#CCFF00]/5 blur-[100px] pointer-events-none rounded-full" />
 
                 <div className="relative z-10 space-y-4">
-                  <div className="flex items-center gap-2.5">
-                    <Tv className="w-5 h-5 text-cyan-400" />
-                    <span className="text-xs uppercase font-extrabold tracking-widest text-[#CCFF00] font-mono">
+                  <div className="flex items-center gap-2">
+                    <Tv className="w-4 h-4 text-cyan-400 animate-pulse" />
+                    <span className="text-[10px] uppercase font-black tracking-widest text-[#CCFF00] font-mono">
                       {activeAd.client}
                     </span>
                   </div>
 
-                  <h3 className="text-3xl sm:text-5xl font-black text-white leading-tight tracking-tight uppercase">
+                  <h3 className="text-2xl sm:text-3xl font-black text-white leading-tight tracking-tight uppercase">
                     {activeAd.headline}
                   </h3>
 
-                  <p className="text-sm sm:text-lg text-gray-300 leading-relaxed max-w-2xl font-sans font-light">
+                  <p className="text-xs sm:text-sm text-gray-300 leading-relaxed font-sans font-light">
                     {activeAd.description}
                   </p>
 
-                  {/* High Quality animated Ad Simulation Core widget inside the player */}
-                  <div className="bg-black/60 border border-white/10 p-5 rounded-2xl font-mono text-xs text-cyan-400 space-y-3.5">
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-400 uppercase text-[10px]">Security Hash Verification:</span>
-                      <span className="text-emerald-400">STATUS_SECURE_AD_NODE</span>
+                  {/* Operational Ad verification specs */}
+                  <div className="bg-black/40 border border-white/5 p-4 rounded-xl font-mono text-[10px] text-cyan-300 space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Security:</span>
+                      <span className="text-emerald-400 font-bold">STATUS_SECURE_AD</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Validation:</span>
+                      <span>{activeAd.interactiveChallenge}</span>
                     </div>
                     <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
                       <div 
-                        className="h-full bg-cyan-400 rounded-full transition-all duration-1000" 
+                        className="h-full bg-gradient-to-r from-cyan-400 to-[#CCFF00] rounded-full transition-all duration-1000" 
                         style={{ width: `${((AD_DURATION - adTimer) / AD_DURATION) * 100}%` }}
                       />
-                    </div>
-                    <div className="flex justify-between text-[10px] text-gray-500">
-                      <span>{activeAd.interactiveChallenge}</span>
-                      <span>PING RES_NODE_OK</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Sub-card presenting reward token value */}
-                <div className="relative z-10 bg-white/5 px-6 py-4 rounded-2xl border border-white/5 flex flex-col sm:flex-row justify-between items-center gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-[#CCFF00]/10 flex items-center justify-center border border-[#CCFF00]/20">
-                      <Coins className="w-5 h-5 text-[#CCFF00]" />
-                    </div>
+                {/* Subcard holding reward tokens values info */}
+                <div className="relative z-10 bg-white/5 px-4 py-3 rounded-xl border border-[#CCFF00]/10 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Coins className="w-4 h-4 text-[#CCFF00]" />
                     <div>
-                      <p className="text-xs font-black text-white">Academic Blockchain Token Reserve</p>
-                      <p className="text-[10px] text-gray-400 font-mono">Locked payout value: {REWARD_RATE}.0 NEXA coins</p>
+                      <p className="text-[10px] font-bold text-white uppercase font-mono">AD-TOKEN BOOSTER</p>
+                      <p className="text-[9px] text-gray-400 font-mono">Locked payout: {REWARD_RATE}.0 NEXA</p>
                     </div>
                   </div>
-                  <div className="px-4 py-1.5 bg-[#CCFF00]/10 text-[#CCFF00] border border-[#CCFF00]/20 rounded-xl text-xs font-bold font-mono uppercase">
-                    🥇 Dynamic Yield +{REWARD_RATE}
+                  <div className="px-2.5 py-1 bg-[#CCFF00]/10 text-[#CCFF00] border border-[#CCFF00]/20 rounded-lg text-[9px] font-bold font-mono">
+                    +{REWARD_RATE}.0 NEXA
                   </div>
                 </div>
+
               </div>
+
             </div>
 
             {/* Bottom Footer Ad Warnings specifications */}
             <div className="text-center relative z-20 space-y-1">
-              <p className="text-[9px] text-gray-500 font-mono uppercase tracking-widest">
-                This academic node ad simulation is fully client-validated. No personal metrics cookies are gathered.
+              <p className="text-[9px] text-gray-400 font-mono uppercase tracking-widest">
+                This academic node ad is securely authenticated. No personal metrics cookies are gathered.
               </p>
               <div className="flex justify-center gap-4 text-[10px] text-gray-400 font-mono">
-                <span>VERIFIED SPONSOR: GOOGLE WEB-SANDBOX</span>
+                <span>VERIFIED SPONSOR: GOOGLE ADMOB SDK</span>
                 <span>•</span>
                 <span>SECURE PAYOUT: FIREBASE ACTIVE INSTANCE</span>
               </div>

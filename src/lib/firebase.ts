@@ -9,7 +9,8 @@ import {
   collection, 
   getDocs,
   query,
-  orderBy
+  orderBy,
+  onSnapshot
 } from "firebase/firestore";
 import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 export { GoogleAuthProvider, signInWithPopup };
@@ -90,8 +91,8 @@ export function handleFirestoreError(
   console.warn("Firestore Error Logged Silently: ", JSON.stringify(errInfo));
 }
 
-// Timeout wrap promise helper to keep operations ultra-fast (limit to 1800ms for seamless user fallback)
-function withTimeout<T>(promise: Promise<T>, ms = 1800, description = "Operation"): Promise<T> {
+// Timeout wrap promise helper to keep operations ultra-fast (limit to 6000ms for seamless user fallback)
+function withTimeout<T>(promise: Promise<T>, ms = 6000, description = "Operation"): Promise<T> {
   return Promise.race([
     promise,
     new Promise<never>((_, reject) =>
@@ -106,7 +107,7 @@ export async function fetchUserProfile(username: string): Promise<any | null> {
   try {
     const userDoc = await withTimeout(
       getDoc(doc(db, "users", username.toLowerCase().trim())),
-      1800,
+      6000,
       "Fetch user profile"
     );
     if (userDoc.exists()) {
@@ -165,7 +166,7 @@ export async function createUserProfile(username: string, baseProfile: any): Pro
         current_streak: baseProfile.streak || 0,
         last_active_date: new Date().toISOString().split("T")[0]
       }),
-      1800,
+      6000,
       "Create user profile"
     );
   } catch (err: any) {
@@ -187,7 +188,7 @@ export async function syncUserProfileUpdate(username: string, updates: any): Pro
     }
     await withTimeout(
       updateDoc(doc(db, "users", cleanedUsername), updates),
-      1800,
+      6000,
       "Sync user profile"
     );
   } catch (err: any) {
@@ -203,7 +204,7 @@ export async function syncTaskToFirestore(username: string, taskId: string, task
   try {
     await withTimeout(
       setDoc(doc(db, "users", cleanedUsername, "tasks", taskId), taskData),
-      1800,
+      6000,
       "Sync task"
     );
   } catch (err) {
@@ -217,7 +218,7 @@ export async function getSyncTasksFromFirestore(username: string): Promise<any[]
   try {
     const snapshot = await withTimeout(
       getDocs(collection(db, "users", cleanedUsername, "tasks")),
-      1800,
+      6000,
       "Get sync tasks"
     );
     const list: any[] = [];
@@ -238,7 +239,7 @@ export async function syncChatToFirestore(username: string, chatId: string, chat
   try {
     await withTimeout(
       setDoc(doc(db, "users", cleanedUsername, "chats", chatId), chatData),
-      1800,
+      6000,
       "Sync chat"
     );
   } catch (err) {
@@ -252,7 +253,7 @@ export async function getSyncChatsFromFirestore(username: string): Promise<any[]
   try {
     const snapshot = await withTimeout(
       getDocs(collection(db, "users", cleanedUsername, "chats")),
-      1800,
+      6000,
       "Get sync chats"
     );
     const list: any[] = [];
@@ -284,7 +285,7 @@ export async function syncAdSessionToFirestore(username: string, sessionId: stri
 
     await withTimeout(
       setDoc(doc(db, "users", cleanedUsername, "ad_sessions", sessionId), sessionData),
-      1800,
+      6000,
       "Sync ad session"
     );
   } catch (err) {
@@ -306,7 +307,7 @@ export async function getAdSessionsFromFirestore(username: string): Promise<any[
 
     const snapshot = await withTimeout(
       getDocs(collection(db, "users", cleanedUsername, "ad_sessions")),
-      1800,
+      6000,
       "Get sync ad sessions"
     );
     const list: any[] = [];
@@ -344,7 +345,7 @@ export async function deleteUserProfileByAdmin(username: string): Promise<boolea
     const { deleteDoc, doc } = await import("firebase/firestore");
     await withTimeout(
       deleteDoc(doc(db, "users", cleanedUsername)),
-      2000,
+      6000,
       "Delete user profile"
     );
     
@@ -382,6 +383,84 @@ export async function deleteUserProfileByAdmin(username: string): Promise<boolea
     keysToRemoval.forEach((k) => localStorage.removeItem(k));
     handleFirestoreError(err, OperationType.DELETE, path);
     return false;
+  }
+}
+
+// --- Global Realtime Community Synchronizer Hooks & API Nodes ---
+
+// Sync allUsers list in real-time
+export function subscribeToGlobalUsers(onUpdate: (users: any[]) => void, onError?: (err: any) => void) {
+  const q = query(collection(db, "users"), orderBy("xp", "desc"));
+  return onSnapshot(q, (snapshot) => {
+    const usersList: any[] = [];
+    snapshot.forEach((docRef) => {
+      usersList.push({ username: docRef.id, ...docRef.data() });
+    });
+    onUpdate(usersList);
+  }, (error) => {
+    console.error("Global Users Sync Failure:", error);
+    if (onError) onError(error);
+  });
+}
+
+// Sync reels in real-time
+export function subscribeToGlobalReels(onUpdate: (reels: any[]) => void, onError?: (err: any) => void) {
+  const q = collection(db, "reels");
+  return onSnapshot(q, (snapshot) => {
+    const reelsList: any[] = [];
+    snapshot.forEach((docRef) => {
+      reelsList.push({ id: docRef.id, ...docRef.data() });
+    });
+    // Sort by id descending
+    reelsList.sort((a, b) => b.id.localeCompare(a.id));
+    onUpdate(reelsList);
+  }, (error) => {
+    console.error("Global Reels Sync Failure:", error);
+    if (onError) onError(error);
+  });
+}
+
+// Sync posts in real-time
+export function subscribeToGlobalPosts(onUpdate: (posts: any[]) => void, onError?: (err: any) => void) {
+  const q = collection(db, "posts");
+  return onSnapshot(q, (snapshot) => {
+    const postsList: any[] = [];
+    snapshot.forEach((docRef) => {
+      postsList.push({ id: docRef.id, ...docRef.data() });
+    });
+    postsList.sort((a, b) => b.id.localeCompare(a.id));
+    onUpdate(postsList);
+  }, (error) => {
+    console.error("Global Posts Sync Failure:", error);
+    if (onError) onError(error);
+  });
+}
+
+// Publish/update individual reel to Firestore
+export async function syncReelToFirestore(reelId: string, reelData: any): Promise<void> {
+  const path = `reels/${reelId}`;
+  try {
+    await withTimeout(
+      setDoc(doc(db, "reels", reelId), reelData, { merge: true }),
+      6000,
+      "Sync global reel"
+    );
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
+  }
+}
+
+// Publish/update individual post to Firestore
+export async function syncPostToFirestore(postId: string, postData: any): Promise<void> {
+  const path = `posts/${postId}`;
+  try {
+    await withTimeout(
+      setDoc(doc(db, "posts", postId), postData, { merge: true }),
+      6000,
+      "Sync global post"
+    );
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
   }
 }
 

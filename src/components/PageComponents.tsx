@@ -671,18 +671,57 @@ export const CareerRoadmapView: React.FC = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ career: careerChoice })
       });
-      const data = await res.json();
-      if (data.success) {
-        setRoadmap({
-          career: data.career,
-          salary: isGradeLevel ? "" : (data.salary || "$150,000 / Year"),
-          collegeSuggestions: data.collegeSuggestions || ["NexaTech University Hub"],
-          roadmap: data.roadmap || []
-        });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success) {
+          setRoadmap({
+            career: data.career,
+            salary: isGradeLevel ? "" : (data.salary || "$150,000 / Year"),
+            collegeSuggestions: data.collegeSuggestions || ["NexaTech University Hub"],
+            roadmap: data.roadmap || []
+          });
+          setLoading(false);
+          return;
+        }
       }
     } catch (e) {
-      console.warn(e);
+      console.warn("AI roadmap generator server offline, using client simulation:", e);
     }
+
+    // Local roadmap templates based on selection
+    let mockRoadmapNodes = [
+      { title: "Quantum Physics Foundations", duration: "Weeks 1-4", skills: ["Mathematical Analysis", "Qubits", "Superposition"], description: "Unify basic linear mathematics under multidimensional tensor spaces to represent qubit states." },
+      { title: "Architectural System Interfacing", duration: "Weeks 5-8", skills: ["API Design", "Protocol Parsing", "Edge Node Config"], description: "Configure system modules across low-latency network pipelines to align telemetry indices." },
+      { title: "Iterative Feedback Convergence", duration: "Weeks 9-12", skills: ["Stochastic Gradients", "Backpropagation", "Weight Optimizers"], description: "Calibrate multidimensional feedback networks to achieve system balance parameters." }
+    ];
+
+    let mockCollege = ["Neo-Stanford Science Core", "MIT Cyber Labs", "NexaTech University Hub"];
+    let mockSalary = "$185,000 / Year";
+
+    if (/robotics/i.test(careerChoice) || /grade 9/i.test(careerChoice)) {
+      mockRoadmapNodes = [
+        { title: "Boolean Logic & Circuitry", duration: "Weeks 1-4", skills: ["Gates", "Truth Tables", "Soldering"], description: "Learn how micro-relays and logic gates map truth statements directly to current voltage flow." },
+        { title: "Micro-Controller Mapping", duration: "Weeks 5-8", skills: ["Arduino IDE", "C++ Basic Loops", "PWM Control"], description: "Program real-time boards to intercept analog sensor inputs and actuate physical kinetic motors." },
+        { title: "Sensing Array Mechanics", duration: "Weeks 9-12", skills: ["Ultrasonics", "Infrared", "Gyroscope"], description: "Filter sonar bounce inputs and gyroscope axes to navigate mechanical vehicles through obstacles." }
+      ];
+      mockCollege = ["NexaTech robotics academy", "Kyoto Advanced Mechatronics"];
+      mockSalary = "$115,000 / Year";
+    } else if (/astro/i.test(careerChoice) || /grade 10/i.test(careerChoice)) {
+      mockRoadmapNodes = [
+        { title: "Organic Molecule Synthesis", duration: "Weeks 1-4", skills: ["Amino Acids", "Enzymes", "RNA Coding"], description: "Map biochemistry equations governing carbon structures under extreme space conditions." },
+        { title: "Extraterrestrial Biosphere Simulation", duration: "Weeks 5-8", skills: ["Hydroponics", "Pressure Regulators", "O2 Synthesis"], description: "Build artificial feedback ecosystems that preserve biological cultures under sub-zero bounds." },
+        { title: "Pathogen Mitigation Studies", duration: "Weeks 9-12", skills: ["Gene Sequencing", "CRISPR Filters", "Antiviral Shielding"], description: "Design protein sequences that bind to alien viral pods and neutralize bio-corrosive effects." }
+      ];
+      mockCollege = ["NASA Biotech Wing", "Zurich Astrobiology Guild"];
+      mockSalary = "$135,000 / Year";
+    }
+
+    setRoadmap({
+      career: careerChoice,
+      salary: isGradeLevel ? "" : mockSalary,
+      collegeSuggestions: mockCollege,
+      roadmap: mockRoadmapNodes
+    });
     setLoading(false);
   };
 

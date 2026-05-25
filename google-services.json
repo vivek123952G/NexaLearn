@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "954914585179",
+    "project_id": "nexalearn-85752",
+    "storage_bucket": "nexalearn-85752.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:954914585179:android:8ff584a934cb8e72b6dd7e",
+        "android_client_info": {
+          "package_name": "com.Nexalearn.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyASumzt0mXV4H9kbuDq7pmWU9DgTRYNLFc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

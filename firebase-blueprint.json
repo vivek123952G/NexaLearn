@@ -61,6 +61,66 @@
         "timestamp": { "type": "string" }
       },
       "required": ["reporter", "targetId", "reason", "timestamp"]
+    },
+    "AdSession": {
+      "title": "AdSession",
+      "description": "Verified virtual ads viewed reward session metrics logs",
+      "type": "object",
+      "properties": {
+        "timestamp": { "type": "string" },
+        "coinsEarned": { "type": "number" },
+        "adId": { "type": "string" },
+        "headline": { "type": "string" },
+        "client": { "type": "string" }
+      },
+      "required": ["timestamp", "coinsEarned"]
+    },
+    "StudyReel": {
+      "title": "StudyReel",
+      "description": "Short social studying videos shared by students",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "creator": { "type": "string" },
+        "creatorAvatar": { "type": "string" },
+        "caption": { "type": "string" },
+        "likes": { "type": "number" },
+        "comments": { "type": "number" },
+        "liked": { "type": "boolean" },
+        "saved": { "type": "boolean" },
+        "tags": { "type": "array" },
+        "dislikes": { "type": "number" },
+        "disliked": { "type": "boolean" },
+        "commentsList": { "type": "array" },
+        "views": { "type": "number" },
+        "audioUrl": { "type": "string" },
+        "audioName": { "type": "string" },
+        "audioVolume": { "type": "number" },
+        "originalVolume": { "type": "number" }
+      },
+      "required": ["id", "videoUrl", "creator", "caption"]
+    },
+    "FeedPost": {
+      "title": "FeedPost",
+      "description": "Academic micro-posts, questions, and notes shared on the global timeline",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "avatar": { "type": "string" },
+        "timeAgo": { "type": "string" },
+        "content": { "type": "string" },
+        "likes": { "type": "number" },
+        "liked": { "type": "boolean" },
+        "tag": { "type": "string" },
+        "comments": { "type": "array" },
+        "mediaUrl": { "type": "string" },
+        "mediaType": { "type": "string" },
+        "dislikes": { "type": "number" },
+        "disliked": { "type": "boolean" }
+      },
+      "required": ["id", "username", "content"]
     }
   },
   "firestore": {
@@ -76,9 +136,21 @@
       "schema": "ChatMessage",
       "description": "Active chat sequences logged globally with active avatar cache"
     },
+    "users/{username}/ad_sessions/{sessionId}": {
+      "schema": "AdSession",
+      "description": "System verified individual rewarded ads playback logs and timestamps"
+    },
     "reports/{reportId}": {
       "schema": "ContentReport",
       "description": "Global reporting directory for spam validation"
+    },
+    "reels/{reelId}": {
+      "schema": "StudyReel",
+      "description": "Short video insights created and shared by student nodes"
+    },
+    "posts/{postId}": {
+      "schema": "FeedPost",
+      "description": "Global user-posted status, answers, and study cards"
     }
   }
 }
