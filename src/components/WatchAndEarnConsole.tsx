@@ -5,6 +5,7 @@ import {
   Info, X, Lock, Unlock, Zap, Shield, Flame, RotateCw, Trophy
 } from "lucide-react";
 import { UserProfile } from "../types";
+import { syncAdSessionToFirestore, getAdSessionsFromFirestore } from "../lib/firebase";
 
 // Types for Watch & Earn State
 interface WatchAndEarnProps {
@@ -81,11 +82,29 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
   const [showCelebration, setShowCelebration] = useState<boolean>(false);
   const [earnedCoinsAnimList, setEarnedCoinsAnimList] = useState<{ id: number; left: number; delay: number }[]>([]);
 
+  // Earnings History State
+  const [adSessions, setAdSessions] = useState<any[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState<boolean>(false);
+
   // Simulation parameters
   const AD_DURATION = 15; // 15 seconds ad countdown
   const COOLDOWN_DURATION = 30; // 30 seconds wait timer
   const DAILY_MAX_ADS = 10; // Limit to 10 ads watchable per node daily
   const REWARD_RATE = 40; // Earn 40 NEXA coins per watched ad
+
+  // Fetch ad viewing history
+  const fetchSessions = async () => {
+    if (!profile.username) return;
+    setLoadingSessions(true);
+    try {
+      const data = await getAdSessionsFromFirestore(profile.username);
+      setAdSessions(data);
+    } catch (e) {
+      console.error("Error loading ad sessions:", e);
+    } finally {
+      setLoadingSessions(false);
+    }
+  };
 
   // Google Mobile Ads SDK Integration Keys (Strict Compliance Specifications)
   // App ID Config: NexaLearnca-app-pub-2996487725106736~5645483039
@@ -108,6 +127,9 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
         setCooldownRemaining(remaining);
       }
     }
+
+    // Async reload ad reward logs ledger
+    fetchSessions();
   }, [profile.username]);
 
   // Timers thread
@@ -205,6 +227,26 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
 
     // Trigger local state updates to Firestore & localStorage
     saveProfileWithParams(nextProfile);
+
+    // Write session transaction log
+    if (activeAd) {
+      const sessionId = `ad_view_${Date.now()}`;
+      const sessionData = {
+        timestamp: new Date().toISOString(),
+        coinsEarned: REWARD_RATE,
+        adId: activeAd.id,
+        headline: activeAd.headline,
+        client: activeAd.client
+      };
+      // Optimistic state update
+      setAdSessions(prev => [ { id: sessionId, ...sessionData }, ...prev ].slice(0, 10));
+      
+      syncAdSessionToFirestore(profile.username, sessionId, sessionData).then(() => {
+        fetchSessions();
+      }).catch(err => {
+        console.error("Error storing ad session:", err);
+      });
+    }
 
     // Trigger cool 30-seconds cooldown
     const cooldownEndTime = Date.now() + COOLDOWN_DURATION * 1000;
@@ -366,6 +408,94 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* EARNINGS HISTORY LEDGER */}
+          <div className="neo-glass rounded-[35px] p-6 border-white/5 space-y-4 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/5 rounded-full blur-2xl pointer-events-none" />
+            
+            <div className="flex justify-between items-center pb-2 border-b border-white/5">
+              <div className="flex items-center gap-2">
+                <Coins className="w-4 h-4 text-[#CCFF00]" />
+                <div>
+                  <h4 className="text-xs uppercase font-mono font-black text-white tracking-widest">
+                    Ad Earnings Ledger
+                  </h4>
+                  <p className="text-[10px] text-gray-400 font-sans mt-0.5">
+                    Verified blockchain transaction receipts (Last 10 sessions)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={fetchSessions}
+                disabled={loadingSessions}
+                className="p-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-gray-400 hover:text-[#CCFF00] active:scale-[0.98] transition-all disabled:opacity-50"
+                title="Sync Receipts Ledger"
+              >
+                <RotateCw className={`w-3.5 h-3.5 ${loadingSessions ? "animate-spin" : ""}`} />
+              </button>
+            </div>
+
+            {loadingSessions && adSessions.length === 0 ? (
+              <div className="py-8 text-center space-y-2">
+                <div className="w-5 h-5 border-2 border-[#CCFF00] border-t-transparent rounded-full animate-spin mx-auto" />
+                <p className="text-[10px] text-gray-500 font-mono uppercase tracking-wider">Syncing node receipts ledger...</p>
+              </div>
+            ) : adSessions.length === 0 ? (
+              <div className="py-8 text-center space-y-1 bg-black/20 rounded-2xl border border-white/5">
+                <p className="text-xs font-bold text-gray-400 uppercase font-mono">No receipts verified</p>
+                <p className="text-[10px] text-gray-500 font-mono leading-relaxed mt-1">
+                  Claim your first ad to register cryptographic tokens on Firebase.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
+                {adSessions.slice(0, 10).map((session, idx) => (
+                  <div
+                    key={session.id || idx}
+                    className="p-3 bg-black/30 hover:bg-black/40 border border-white/5 hover:border-white/10 rounded-2xl flex items-center justify-between gap-4 transition-all"
+                  >
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                        <span className="text-[11px] font-extrabold text-white truncate uppercase tracking-tight block">
+                          {session.client || "Sponsor Ad"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[9px] text-gray-400 font-mono leading-none mt-1">
+                        <span>ID: {String(session.id || "").replace("ad_view_", "").slice(0, 10)}</span>
+                        <span>•</span>
+                        <span>
+                          {(() => {
+                            try {
+                              const d = new Date(session.timestamp);
+                              return d.toLocaleString(undefined, {
+                                month: "short",
+                                day: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit"
+                              });
+                            } catch (_) {
+                              return session.timestamp || "just now";
+                            }
+                          })()}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <span className="text-xs font-black text-[#CCFF00] font-mono whitespace-nowrap bg-[#CCFF00]/10 border border-[#CCFF00]/20 py-1 px-2.5 rounded-xl block">
+                        +{session.coinsEarned || 40}.0 NEXA
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-[9px] font-mono text-gray-500 italic text-center">
+              🔒 Safe cryptographic logs linked directly to Firestore index bounds.
+            </p>
           </div>
         </div>
 

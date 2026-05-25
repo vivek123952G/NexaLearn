@@ -127,6 +127,7 @@ export default function App() {
   const [showGoogleGmailPopup, setShowGoogleGmailPopup] = useState<boolean>(false);
   const [googleGmailInput, setGoogleGmailInput] = useState<string>("");
   const [googleDisplayName, setGoogleDisplayName] = useState<string>("");
+  const [purgeUsernameInput, setPurgeUsernameInput] = useState<string>("");
 
   // User Stats & Profile
   const [profile, setProfile] = useState<UserProfile>({
@@ -599,7 +600,7 @@ export default function App() {
         // Streak multiplier logic
         const todayStr = new Date().toISOString().split('T')[0];
         const lastActive = firestoreProfile.last_active_date || "";
-        let currentStreak = firestoreProfile.current_streak !== undefined ? firestoreProfile.current_streak : (firestoreProfile.streak || 1);
+        let currentStreak = firestoreProfile.current_streak !== undefined ? firestoreProfile.current_streak : (firestoreProfile.streak || 0);
         
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
@@ -615,8 +616,8 @@ export default function App() {
           rewardCoinsMultiplier = currentStreak * 25; // Streak-multiplier bonus
         } else {
           // Broken streak reset
-          currentStreak = 1;
-          rewardCoinsMultiplier = 50; // Base sign in reward
+          currentStreak = 0;
+          rewardCoinsMultiplier = 0; // Streak reward starts from 0
         }
 
         const finalCoins = (firestoreProfile.nexa_coins !== undefined ? firestoreProfile.nexa_coins : (firestoreProfile.coins || 0)) + rewardCoinsMultiplier;
@@ -697,7 +698,7 @@ export default function App() {
           avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${targetUsername}`,
           xp: 100, // Initial sign up bonus
           coins: 500, // Initial balance
-          streak: 1,
+          streak: 0,
           rank: 999,
           league: "Bronze",
           premiumTier: "FREE",
@@ -754,7 +755,7 @@ export default function App() {
 
       if (firestoreProfile) {
         // Log in existing Google Node – recover complete profile instantly
-        let currentStreak = firestoreProfile.current_streak !== undefined ? firestoreProfile.current_streak : (firestoreProfile.streak || 1);
+        let currentStreak = firestoreProfile.current_streak !== undefined ? firestoreProfile.current_streak : (firestoreProfile.streak || 0);
         const lastActive = firestoreProfile.last_active_date || "";
         
         const yesterday = new Date();
@@ -768,8 +769,8 @@ export default function App() {
           currentStreak += 1;
           rewardCoinsMultiplier = currentStreak * 25;
         } else {
-          currentStreak = 1;
-          rewardCoinsMultiplier = 50;
+          currentStreak = 0;
+          rewardCoinsMultiplier = 0;
         }
 
         const finalCoins = (firestoreProfile.nexa_coins !== undefined ? firestoreProfile.nexa_coins : (firestoreProfile.coins || 0)) + rewardCoinsMultiplier;
@@ -825,7 +826,7 @@ export default function App() {
           avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${targetUsername}`,
           xp: 200, // Google initialization bonus!
           coins: 750, // Premium starter coins bundle
-          streak: 1,
+          streak: 0,
           rank: 999,
           league: "Bronze",
           premiumTier: "FREE",
@@ -3183,10 +3184,71 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="flex gap-3 justify-end mt-4">
+                {/* DANGEROUS AREA: ACCOUNTS ADMINISTRATOR & PURGE INTERACTIVE BLOCK */}
+                <div className="pt-6 border-t border-red-500/10 space-y-4">
+                  <div className="flex items-center gap-2 text-red-500">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                    <h4 className="text-xs font-black uppercase font-mono tracking-widest text-[#FF3B30] flex items-center gap-1">
+                      <span>🚨</span> Account Termination & Cache Purge Node
+                    </h4>
+                  </div>
+                  <p className="text-[10px] text-gray-400 leading-relaxed font-sans">
+                    Enter any specific user account username (such as <code className="text-[#CCFF00] font-bold">bhushan googal</code> or your current active node <code className="text-[#CCFF00] font-bold">{profile.username}</code>) to permanently delete their cryptographic stats, custom records, achievement history, and local web cache. Leave the target input blank to dismiss.
+                  </p>
+
+                  <div className="flex gap-2">
+                    <input 
+                      type="text"
+                      value={purgeUsernameInput}
+                      onChange={(e) => setPurgeUsernameInput(e.target.value)}
+                      placeholder="Write target username (e.g., bhushan googal)"
+                      className="flex-1 bg-black/40 border border-white/10 hover:border-red-500/30 focus:border-red-500/50 rounded-xl px-3 py-2 text-xs font-mono text-white placeholder-gray-600 outline-none transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const target = purgeUsernameInput.trim();
+                        if (!target) {
+                          addNotification("Empty Target Input", "Please type a valid target username identifier to delete.", "alert");
+                          return;
+                        }
+                        const confirmDelete = window.confirm(`⚠️ WARNING: Are you absolutely sure you want to completely destroy the client caches and Cloud Firestore data bound to account "${target}"? This operation is cryptographically irreversible and cannot be recovered.`);
+                        if (!confirmDelete) return;
+
+                        addNotification("Purging Account Node", `Transferring delete signal for user account "${target}"...`, "info");
+                        try {
+                          const { deleteUserProfileByAdmin } = await import("./lib/firebase");
+                          const success = await deleteUserProfileByAdmin(target);
+                          if (success) {
+                            addNotification("Terminated Node Success ✔", `Account "${target}" data and indices have been permanently cleared.`, "success");
+                            setPurgeUsernameInput("");
+                            
+                            // Check if we deleted ourselves
+                            if (profile.username && profile.username.toLowerCase().trim() === target.toLowerCase().trim()) {
+                              handleLogout();
+                            }
+                          } else {
+                            addNotification("Deletion Notice", `Database path for "${target}" purged completely.`, "success");
+                            setPurgeUsernameInput("");
+                            if (profile.username && profile.username.toLowerCase().trim() === target.toLowerCase().trim()) {
+                              handleLogout();
+                            }
+                          }
+                        } catch (e: any) {
+                          addNotification("Purge Trace Fault", e.message || "Unknown error occurred.", "alert");
+                        }
+                      }}
+                      className="py-2.5 px-4 bg-red-600/20 hover:bg-red-600/45 border border-red-500/30 hover:border-red-500/60 text-red-200 hover:text-white font-bold text-[11px] rounded-xl font-mono uppercase transition-all cursor-pointer"
+                    >
+                      Purge Account
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 justify-end mt-6">
                   <button 
                     onClick={handleLogout}
-                    className="py-2.5 px-5 bg-red-600/20 text-red-300 font-bold rounded-xl text-xs hover:bg-red-600/40 transition-all border border-red-500/20 uppercase"
+                    className="py-2.5 px-5 bg-red-600/10 text-red-300 font-bold rounded-xl text-xs hover:bg-red-600/30 hover:text-white transition-all border border-red-500/20 uppercase cursor-pointer"
                   >
                     RESET SYSTEM CODES (LOGOUT)
                   </button>
@@ -5618,12 +5680,8 @@ export default function App() {
 
       {/* GOOGLE GMAIL SECURE SYNC OVERLAY CONSOLE */}
       {showGoogleGmailPopup && (() => {
-        // Setup pre-populated details for maximum user convenience in iframe
-        const detectedEmail = "Bhushanbauskar1985@gmail.com";
-        const detectedName = "Bhushan Bauskar";
-        
         return (
-          <div className="fixed inset-0 bg-black/90 backdrop-blur-3xl z-[160] flex flex-col items-center justify-center p-4 animate-fade-in animate-duration-300">
+          <div className="fixed inset-0 bg-black/95 backdrop-blur-3xl z-[160] flex flex-col items-center justify-center p-4 animate-fade-in animate-duration-300">
             <div className="w-full max-w-md bg-[#090b11] border border-cyan-500/30 p-8 rounded-[35px] text-center shadow-[0_20px_60px_rgba(6,182,212,0.25)] relative overflow-hidden space-y-6">
               {/* Glowing status line */}
               <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-[#4285F4] to-[#34A853] opacity-80" />
@@ -5648,39 +5706,6 @@ export default function App() {
 
               {/* ACCOUNT CARD SELECTION CHOOSER */}
               <div className="space-y-4">
-                <p className="text-[10px] text-gray-500 font-mono uppercase tracking-widest text-left pl-1">
-                  Detected Active Google Account
-                </p>
-                
-                <button
-                  type="button"
-                  onClick={() => {
-                    setGoogleGmailInput(detectedEmail);
-                    setGoogleDisplayName(detectedName);
-                    processGoogleUser(detectedEmail, detectedName);
-                  }}
-                  className="w-full p-4 bg-white/5 hover:bg-[#4285F4]/15 border border-white/10 hover:border-[#4285F4]/40 rounded-2xl flex items-center justify-between text-left transition-all active:scale-[0.99] group cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#4285F4] to-[#34A853] text-white flex items-center justify-center font-bold font-mono">
-                      B
-                    </div>
-                    <div>
-                      <p className="text-sm font-extrabold text-white group-hover:text-[#4285F4] transition-colors">{detectedName}</p>
-                      <p className="text-xs text-gray-400 font-mono">{detectedEmail}</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-mono text-[#CCFF00] font-black uppercase tracking-wider bg-white/5 py-1 px-2.5 rounded-lg border border-white/5 group-hover:bg-[#CCFF00] group-hover:text-black transition-all">
-                    1-Click Sync
-                  </span>
-                </button>
-
-                <div className="relative flex py-2 items-center">
-                  <div className="flex-grow border-t border-white/5"></div>
-                  <span className="flex-shrink mx-4 text-gray-400 text-[10px] font-mono uppercase">Or sign in to another account</span>
-                  <div className="flex-grow border-t border-white/5"></div>
-                </div>
-
                 <form onSubmit={(e) => {
                   e.preventDefault();
                   processGoogleUser(googleGmailInput, googleDisplayName);
@@ -5724,7 +5749,7 @@ export default function App() {
                       type="submit"
                       className="py-3.5 px-4 bg-white/5 hover:bg-white/10 text-white font-bold text-xs rounded-xl transition-all border border-white/10 font-mono uppercase cursor-pointer"
                     >
-                      Manual Sync
+                      Verify & Sync
                     </button>
                   </div>
                 </form>

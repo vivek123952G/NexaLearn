@@ -443,8 +443,18 @@ export const TournamentLobbyComponent: React.FC<TournamentLobbyProps> = ({
     { name: "Euler_Mesh_01", score: 720, active: true, country: "🇩🇪" },
     { name: "Quant_Striker_z", score: 680, active: false, country: "🇸🇬" },
     { name: "VectorBuster", score: 550, active: true, country: "🇺🇸" },
-    { name: "Bhushan_Node_🚀", score: profile.xp, active: true, country: "🚀" } // dynamic player rank!
+    { name: `${profile.username || "Student"}_Node_🚀`, score: profile.xp, active: true, country: "🚀" } // dynamic player rank!
   ]);
+
+  // Dynamics stands updater
+  useEffect(() => {
+    setCompetitors(prev => prev.map(c => {
+      if (c.country === "🚀") {
+        return { ...c, name: `${profile.username || "Student"}_Node_🚀`, score: profile.xp };
+      }
+      return c;
+    }));
+  }, [profile.username, profile.xp]);
 
   const [challenges, setChallenges] = useState<TournamentChallenge[]>(() => {
     const saved = localStorage.getItem("nexa_tournament_challenges");
@@ -624,7 +634,7 @@ export const TournamentLobbyComponent: React.FC<TournamentLobbyProps> = ({
 
       // Update standing score
       setCompetitors(prev => prev.map(c => {
-        if (c.name.includes("Bhushan")) {
+        if (c.country === "🚀") {
           return { ...c, score: c.score + finalXp };
         }
         return c;
@@ -772,7 +782,7 @@ export const TournamentLobbyComponent: React.FC<TournamentLobbyProps> = ({
             {competitors.sort((a,b) => b.score - a.score).map((node, index) => (
               <div 
                 key={index} 
-                className={`flex justify-between items-center p-2.5 rounded-xl text-xs ${node.name.includes("Bhushan") ? "bg-cyan-500/10 border border-cyan-400/20" : "bg-black/30"}`}
+                className={`flex justify-between items-center p-2.5 rounded-xl text-xs ${node.country === "🚀" ? "bg-cyan-500/10 border border-cyan-400/20" : "bg-black/30"}`}
               >
                 <div className="flex items-center gap-2">
                   <span className={`w-5 h-5 rounded-md font-mono font-bold flex items-center justify-center text-[11px] ${index === 0 ? 'bg-yellow-400 text-black' : index === 1 ? 'bg-gray-300 text-black' : index === 2 ? 'bg-amber-600 text-white' : 'bg-white/5 text-gray-400'}`}>

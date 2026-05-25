@@ -145,24 +145,8 @@ export async function fetchUserProfile(username: string): Promise<any | null> {
     
     handleFirestoreError(err, OperationType.GET, path);
     
-    // Fallback path 4: Always return an elegant placeholder instead of breaking authentication flow entirely
-    return {
-      username: username.toLowerCase().trim(),
-      email: `${username.toLowerCase().trim()}@offline-fallback.edu`,
-      avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${username.toLowerCase().trim()}`,
-      xp: 120,
-      coins: 600,
-      streak: 1,
-      rank: 999,
-      league: "Bronze",
-      premiumTier: "FREE",
-      unlockedThemes: ["cyber-volt"],
-      activeTheme: "cyber-volt",
-      cosmetics: [],
-      hp: 100,
-      password: "password123",
-      is_offline_simulated: true
-    };
+    // Fallback path 4: Return null if absolutely no cache or credentials match, to avoid blocking signup
+    return null;
   }
 }
 
@@ -281,4 +265,124 @@ export async function getSyncChatsFromFirestore(username: string): Promise<any[]
     return [];
   }
 }
+
+// Ad Viewing Sessions Helpers
+export async function syncAdSessionToFirestore(username: string, sessionId: string, sessionData: any): Promise<void> {
+  const cleanedUsername = username.toLowerCase().trim();
+  const path = `users/${cleanedUsername}/ad_sessions/${sessionId}`;
+  try {
+    // Also save in local storage cache for local lookup/session history
+    const cachedSessionsKey = `nexa_ad_sessions_${cleanedUsername}`;
+    const cachedSessions = localStorage.getItem(cachedSessionsKey);
+    let list: any[] = [];
+    if (cachedSessions) {
+      try { list = JSON.parse(cachedSessions); } catch (_) {}
+    }
+    list.unshift({ id: sessionId, ...sessionData });
+    // Keep last 30 sessions locally
+    localStorage.setItem(cachedSessionsKey, JSON.stringify(list.slice(0, 30)));
+
+    await withTimeout(
+      setDoc(doc(db, "users", cleanedUsername, "ad_sessions", sessionId), sessionData),
+      1800,
+      "Sync ad session"
+    );
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
+  }
+}
+
+export async function getAdSessionsFromFirestore(username: string): Promise<any[]> {
+  const cleanedUsername = username.toLowerCase().trim();
+  const path = `users/${cleanedUsername}/ad_sessions`;
+  try {
+    // Try local storage cache fallback first for rapid feedback
+    const cachedSessionsKey = `nexa_ad_sessions_${cleanedUsername}`;
+    const cachedSessions = localStorage.getItem(cachedSessionsKey);
+    let cachedList: any[] = [];
+    if (cachedSessions) {
+      try { cachedList = JSON.parse(cachedSessions); } catch (_) {}
+    }
+
+    const snapshot = await withTimeout(
+      getDocs(collection(db, "users", cleanedUsername, "ad_sessions")),
+      1800,
+      "Get sync ad sessions"
+    );
+    const list: any[] = [];
+    snapshot.forEach((d) => {
+      list.push({ id: d.id, ...d.data() });
+    });
+    // Sort descending by timestamp
+    list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    
+    // Save to local cache
+    localStorage.setItem(cachedSessionsKey, JSON.stringify(list.slice(0, 30)));
+    return list;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.LIST, path);
+    
+    // Fallback to local cache
+    const cachedSessionsKey = `nexa_ad_sessions_${cleanedUsername}`;
+    const cachedSessions = localStorage.getItem(cachedSessionsKey);
+    if (cachedSessions) {
+      try {
+        const list = JSON.parse(cachedSessions);
+        list.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        return list;
+      } catch (_) {}
+    }
+    return [];
+  }
+}
+
+// Support function to delete specific user profile from Firestore and clean up related cache keys
+export async function deleteUserProfileByAdmin(username: string): Promise<boolean> {
+  const cleanedUsername = username.toLowerCase().trim();
+  const path = `users/${cleanedUsername}`;
+  try {
+    const { deleteDoc, doc } = await import("firebase/firestore");
+    await withTimeout(
+      deleteDoc(doc(db, "users", cleanedUsername)),
+      2000,
+      "Delete user profile"
+    );
+    
+    // Clear associated local storage keys
+    const keysToRemoval = [
+      `nexa_user_profile_${cleanedUsername}`,
+      `nexa_weekly_planner_${cleanedUsername}`,
+      `nexa_weekly_rotate_last_${cleanedUsername}`,
+      `nexa_ad_sessions_${cleanedUsername}`,
+      `watch_earn_cooldown_${cleanedUsername}`,
+      `nexa_last_streak_time_${cleanedUsername}`,
+      `nexa_local_tasks_${cleanedUsername}`,
+      `nexa_messages_${cleanedUsername}`
+    ];
+    keysToRemoval.forEach((k) => localStorage.removeItem(k));
+    
+    // Clean current active login reference if it matches
+    const currentActive = localStorage.getItem("nexa_login_success_username");
+    if (currentActive && currentActive.toLowerCase().trim() === cleanedUsername) {
+      localStorage.removeItem("nexa_login_success_username");
+    }
+    return true;
+  } catch (err) {
+    // If offline or fails, force local storage cleanup anyway as a failsafe
+    const keysToRemoval = [
+      `nexa_user_profile_${cleanedUsername}`,
+      `nexa_weekly_planner_${cleanedUsername}`,
+      `nexa_weekly_rotate_last_${cleanedUsername}`,
+      `nexa_ad_sessions_${cleanedUsername}`,
+      `watch_earn_cooldown_${cleanedUsername}`,
+      `nexa_last_streak_time_${cleanedUsername}`,
+      `nexa_local_tasks_${cleanedUsername}`,
+      `nexa_messages_${cleanedUsername}`
+    ];
+    keysToRemoval.forEach((k) => localStorage.removeItem(k));
+    handleFirestoreError(err, OperationType.DELETE, path);
+    return false;
+  }
+}
+
 
