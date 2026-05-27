@@ -44,6 +44,8 @@ export interface FeedPost {
   mediaUrl?: string;
   mediaType?: 'image' | 'video' | 'pdf';
   tag?: string;
+  audioUrl?: string;
+  audioName?: string;
 }
 
 export interface Comment {

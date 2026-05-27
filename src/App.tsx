@@ -33,6 +33,7 @@ import { NexaGramHub } from "./components/NexaGramHub";
 import { GrowthEngineHub } from "./components/GrowthEngineHub";
 import { WatchAndEarnConsole } from "./components/WatchAndEarnConsole";
 import { AnimatedLeaderboard } from "./components/AnimatedLeaderboard";
+import { admobService } from "./lib/AdMobService";
 
 interface StreakBoosterButtonProps {
   streak: number;
@@ -318,6 +319,13 @@ export default function App() {
       }
       setCustomAlert({ isOpen: true, message: msg, title });
     };
+
+    // Initialize AdMob and load potential App Open Ad safely
+    admobService.initialize().then(() => {
+      admobService.showAppOpenAd();
+    }).catch(err => {
+      console.warn("App AdMob initialization bypassed:", err);
+    });
   }, []);
   
   const toggleOfflineMode = (val: boolean) => {
@@ -4563,6 +4571,7 @@ ${input} refers to a key academic paradigm where discrete variable states govern
                 profile={profile}
                 saveProfileWithParams={saveProfileWithParams}
                 addNotification={addNotification}
+                isOfflineMode={isOfflineMode}
               />
             )}
 

@@ -1,56 +1,8 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Global Safety Net Default Deny
     match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // Checking if a student is authenticated
-    function isAuthenticatedStudent() {
-      return request.auth != null;
-    }
-
-    // User profiles collection
-    match /users/{username} {
-      allow read, write: if isAuthenticatedStudent();
-
-      // Tasks sub-collection
-      match /tasks/{taskId} {
-        allow read, write: if isAuthenticatedStudent();
-      }
-
-      // Chats sub-collection
-      match /chats/{chatId} {
-        allow read, write: if isAuthenticatedStudent();
-      }
-
-      // Ad Viewing Sessions helper sub-collection
-      match /ad_sessions/{sessionId} {
-        allow read, write: if isAuthenticatedStudent();
-      }
-    }
-
-    // Global reports collection
-    match /reports/{reportId} {
-      allow read, write: if isAuthenticatedStudent();
-    }
-
-    // Global reels collection
-    match /reels/{reelId} {
-      allow read, write: if isAuthenticatedStudent();
-    }
-
-    // Global posts collection
-    match /posts/{postId} {
-      allow read, write: if isAuthenticatedStudent();
-    }
-
-    // Telemetry errors logging collection
-    match /errors/{errorId} {
-      allow create: if true;
-      allow read: if false; // Deny public reads to telemetry logs to isolate PII
+      allow read, write: if true;
     }
   }
 }

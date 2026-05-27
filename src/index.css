@@ -131,3 +131,10 @@ body {
   background-size: 100% 4px, 6px 100%;
 }
 
+/* Collapse top publisher banner on narrow screens (< 480px) to prevent overflow/preserve layout integrity */
+@media (max-width: 479px) {
+  #div-gpt-ad-top-banner {
+    display: none !important;
+  }
+}
+

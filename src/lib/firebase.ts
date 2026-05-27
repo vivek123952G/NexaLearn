@@ -1,7 +1,9 @@
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApp, getApps } from "firebase/app";
 import { 
-  getFirestore, 
-  enableIndexedDbPersistence, 
+  initializeFirestore,
+  getFirestore,
+  persistentLocalCache,
+  persistentSingleTabManager,
   doc, 
   getDoc, 
   setDoc, 
@@ -10,36 +12,109 @@ import {
   getDocs,
   query,
   orderBy,
-  onSnapshot
+  onSnapshot,
+  getDocFromServer,
+  disableNetwork,
+  enableNetwork
 } from "firebase/firestore";
 import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 export { GoogleAuthProvider, signInWithPopup };
+import { Capacitor } from "@capacitor/core";
 import firebaseConfig from "../../firebase-applet-config.json";
 
 // Normalize potential Vite default ESM wrapper
 const actualConfig = (firebaseConfig as any).default || firebaseConfig;
 
-// Initialize Firebase App
-const app = initializeApp(actualConfig);
+// Initialize Firebase App robustly
+const app = getApps().length === 0 ? initializeApp(actualConfig) : getApp();
 
-// Initialize Firestore & Auth with explicit custom database ID
-export const db = actualConfig.firestoreDatabaseId 
-  ? getFirestore(app, actualConfig.firestoreDatabaseId)
-  : getFirestore(app);
-export const auth = getAuth(app);
+const isNative = Capacitor.isNativePlatform();
 
-// Enable Offline Cache Persistence for students with unstable internet connections
-try {
-  enableIndexedDbPersistence(db).catch((err) => {
-    if (err.code === "failed-precondition") {
-      console.warn("Multiple tabs open, persistence can only be enabled in one tab at a time.");
-    } else if (err.code === "unimplemented") {
-      console.warn("The current browser does not support all of the features required to enable persistence.");
+// Initialize Firestore with robust connection protocols to completely prevent timeouts in restricted environments:
+// 1. Force HTTP Long Polling instead of standard WebSockets/WebChannel which are often blocked.
+// 2. Enable modern persistentLocalCache with persistentSingleTabManager to avoid multi-iframe/tab collision errors.
+const firestoreSettings = {
+  localCache: persistentLocalCache({
+    tabManager: persistentSingleTabManager({})
+  }),
+  experimentalForceLongPolling: true
+};
+
+const globalTemp = globalThis as any;
+
+let dbInstance: any;
+if (globalTemp._firestoreDb) {
+  dbInstance = globalTemp._firestoreDb;
+} else {
+  try {
+    dbInstance = actualConfig.firestoreDatabaseId 
+      ? initializeFirestore(app, firestoreSettings, actualConfig.firestoreDatabaseId)
+      : initializeFirestore(app, firestoreSettings);
+  } catch (err) {
+    console.warn("⚠️ Failed to initialize Firestore with advanced settings. Retrying with basic settings...", err);
+    try {
+      const fallbackSettings = { experimentalForceLongPolling: true };
+      dbInstance = actualConfig.firestoreDatabaseId 
+        ? initializeFirestore(app, fallbackSettings, actualConfig.firestoreDatabaseId)
+        : initializeFirestore(app, fallbackSettings);
+    } catch (err2) {
+      console.warn("⚠️ Fallback Firestore initialization failed. Defaulting to getFirestore(app)...", err2);
+      dbInstance = getFirestore(app);
     }
-  });
-} catch (e) {
-  console.error("Offline persistence setup failed:", e);
+  }
+  globalTemp._firestoreDb = dbInstance;
 }
+
+export const db = dbInstance;
+
+let authInstance: any;
+if (globalTemp._firebaseAuth) {
+  authInstance = globalTemp._firebaseAuth;
+} else {
+  authInstance = getAuth(app);
+  globalTemp._firebaseAuth = authInstance;
+}
+
+export const auth = authInstance;
+
+// Timeout wrap promise helper to keep operations ultra-fast (limit to 6000ms for seamless user fallback)
+function withTimeout<T>(promise: Promise<T>, ms = 6000, description = "Operation"): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout: ${description} took longer than ${ms}ms`)), ms)
+    )
+  ]);
+}
+
+// Connection Health Check & Auto Offline Mode Tuning
+export async function auditFirestoreConnection(): Promise<boolean> {
+  const testDocRef = doc(db, "connection_test", "health");
+  try {
+    // Attempt to pull a document directly from the server with a short timeout.
+    // If the server doesn't respond in 4.5 seconds or the sandbox blocks the network, we fall back to offline mode.
+    await withTimeout(getDocFromServer(testDocRef), 4500, "Firestore database ping");
+    console.log("📶 Firestore connection test successful! Cloud synchronization is fully operational.");
+    localStorage.setItem("nexa_firestore_connected", "true");
+    try {
+      await enableNetwork(db);
+    } catch (_) {}
+    return true;
+  } catch (err) {
+    console.warn("⚠️ Firestore connection test timeout/failure - switching to absolute offline Mode:", err);
+    localStorage.setItem("nexa_firestore_connected", "false");
+    try {
+      await disableNetwork(db);
+      console.log("🔌 Firestore network traffic disabled automatically to completely prevent 10-second timeout warnings.");
+    } catch (netErr) {
+      console.warn("Could not disable Firestore network:", netErr);
+    }
+    return false;
+  }
+}
+
+// Spark the connection test in the background silently
+auditFirestoreConnection().catch(() => {});
 
 // Telemetry & Diagnostic Error Handlers
 export enum OperationType {
@@ -91,15 +166,6 @@ export function handleFirestoreError(
   console.warn("Firestore Error Logged Silently: ", JSON.stringify(errInfo));
 }
 
-// Timeout wrap promise helper to keep operations ultra-fast (limit to 6000ms for seamless user fallback)
-function withTimeout<T>(promise: Promise<T>, ms = 6000, description = "Operation"): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`Timeout: ${description} took longer than ${ms}ms`)), ms)
-    )
-  ]);
-}
 
 // Data Serialization Helper for Profile Sync
 export async function fetchUserProfile(username: string): Promise<any | null> {

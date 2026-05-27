@@ -6,6 +6,8 @@ import {
   Plus, Crown
 } from "lucide-react";
 import { UserProfile, Question, StudyReel, CareerRoadmap, ShopItem } from "../types";
+import { admobService } from "../lib/AdMobService";
+import { Capacitor } from "@capacitor/core";
 
 // ==========================================
 // 1. STUDY BATTLE ARENA COMPONENT
@@ -198,6 +200,11 @@ export const StudyBattleArena: React.FC<StudyBattleArenaProps> = ({ userProfile,
         onGrantRewards(10, -betAmount);
         onAddNotification("Arena Defeat", `Your core parameters were decoded by ${opponent.name}. Try again!`, 'alert');
       }
+
+      // Safe decentralized Google AdMob interstitial check
+      admobService.showInterstitialAd().catch(err => {
+        console.warn("App AdMob Interstitial missed or bypassed:", err);
+      });
     }
   };
 
@@ -1529,9 +1536,15 @@ export const DailyRewardHub: React.FC<DailyRewardHubProps> = ({
       return;
     }
 
+    const isNative = Capacitor.isNativePlatform();
+    if (!isNative) {
+      onAddNotification("BROWSER SANDBOX RESTRICTED 📱", "Real Google AdMob ads work only inside native Android APK builds.", "alert");
+      alert("BROWSER SANDBOX RESTRICTED: Real Google AdMob ads work only inside native Android APK builds.");
+      return;
+    }
+
     const adCount = profile.daily_ad_count || 0;
     const lastAdTime = profile.last_ad_timestamp || "";
-
     const todayStr = new Date().toISOString().split("T")[0];
     let currentCount = adCount;
 
@@ -1545,48 +1558,48 @@ export const DailyRewardHub: React.FC<DailyRewardHubProps> = ({
       return;
     }
 
-    setAdPlaying(true);
-    setAdCountdown(5);
+    try {
+      onAddNotification("CONNECTING AD SERVER 📡", "Contacting Google Mobile Ads server for verified Rewarded stream...", "info");
+      
+      const success = await admobService.showRewardedAd(
+        async (rewardedAmount) => {
+          const nextCount = currentCount + 1;
+          const nextCoins = (profile.coins || 0) + 50;
 
-    const countdownTimer = setInterval(() => {
-      setAdCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(countdownTimer);
-          return 0;
+          try {
+            const { syncUserProfileUpdate } = await import("../lib/firebase");
+            await syncUserProfileUpdate(profile.username, {
+              daily_ad_count: nextCount,
+              last_ad_timestamp: new Date().toISOString(),
+              nexa_coins: nextCoins,
+              coins: nextCoins
+            });
+
+            onSaveProfile({
+              ...profile,
+              coins: nextCoins,
+              daily_ad_count: nextCount,
+              last_ad_timestamp: new Date().toISOString()
+            });
+
+            onAddNotification("Nexa Coins Claimed! 💰", `Earned +50 NEXA from video ad! (${nextCount}/10 today)`, "success");
+            alert(`Success! Gained +50 NEXA Coins! Daily views: ${nextCount}/10`);
+          } catch (err) {
+            console.error("Ad coin synchronization failed:", err);
+            onAddNotification("Ad Sync Error", "Failed to update wallet parameters.", "alert");
+          }
+        },
+        () => {
+          console.log("Rewarded ad closed in PageComponents");
         }
-        return prev - 1;
-      });
-    }, 1000);
+      );
 
-    setTimeout(async () => {
-      clearInterval(countdownTimer);
-      setAdPlaying(false);
-      const nextCount = currentCount + 1;
-      const nextCoins = (profile.coins || 0) + 50;
-
-      try {
-        const { syncUserProfileUpdate } = await import("../lib/firebase");
-        await syncUserProfileUpdate(profile.username, {
-          daily_ad_count: nextCount,
-          last_ad_timestamp: new Date().toISOString(),
-          nexa_coins: nextCoins,
-          coins: nextCoins
-        });
-
-        onSaveProfile({
-          ...profile,
-          coins: nextCoins,
-          daily_ad_count: nextCount,
-          last_ad_timestamp: new Date().toISOString()
-        });
-
-        onAddNotification("Nexa Coins Claimed! 💰", `Earned +50 NEXA from video ad! (${nextCount}/10 today)`, "success");
-        alert(`Success! Gained +50 NEXA Coins! Daily views: ${nextCount}/10`);
-      } catch (err) {
-        console.error("Ad coin synchronization failed:", err);
-        onAddNotification("Ad Sync Error", "Failed to update wallet parameters.", "alert");
+      if (!success) {
+        onAddNotification("ADMOB FAILURE ⚠️", "AdMob display was suspended or preloading delayed.", "alert");
       }
-    }, 5000);
+    } catch (err: any) {
+      onAddNotification("ADMOB FAILED ❌", err?.message || "Failed to load Google rewarded ad.", "alert");
+    }
   };
 
   // Auto detect broken streak lapse on mount/update of lastCheckTime
@@ -1867,7 +1880,7 @@ export const DailyRewardHub: React.FC<DailyRewardHubProps> = ({
               Watch Ad & Earn (+50 NEXA COINS)
             </span>
             <p className="text-[10px] text-gray-400 mt-1">
-              Unlock quick bonus coins with interactive ad simulations. Limit 10 ads daily.
+              Real Google AdMob ads inside the native APK. Limit 10 ads daily.
             </p>
           </div>
           <div className="text-right">
@@ -1893,22 +1906,13 @@ export const DailyRewardHub: React.FC<DailyRewardHubProps> = ({
           />
         </div>
 
-        {/* Active Play/Watch Trigger and Countdown HUD */}
-        {adPlaying ? (
-          <div className="py-4 px-4 bg-purple-950/30 text-purple-400 border border-purple-500/30 rounded-2xl flex flex-col items-center justify-center gap-2 select-none animate-pulse">
-            <div className="flex items-center gap-2">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-purple-500"></span>
-              </span>
-              <span className="font-mono font-black text-xs uppercase tracking-widest">
-                📹 PLAYING AD SYSTEM SIMULATOR...
-              </span>
-            </div>
-            <span className="text-2xl font-black font-mono animate-bounce">{adCountdown}s</span>
-            <span className="text-[9px] text-gray-500 max-w-xs text-center leading-relaxed font-mono">
-              Analyzing high-speed academic patterns to calibrate educational rewards...
-            </span>
+        {/* Active Play/Watch Trigger */}
+        {!Capacitor.isNativePlatform() ? (
+          <div className="bg-linear-to-r from-cyan-500/10 to-purple-500/10 p-4 rounded-xl border border-white/5 text-center space-y-1">
+            <h4 className="text-[11px] font-mono font-black text-white uppercase tracking-wider">Browser Sandbox Restricted</h4>
+            <p className="text-[9px] text-gray-400 leading-normal">
+              "Real Google AdMob ads work only inside native Android APK builds."
+            </p>
           </div>
         ) : (profile.daily_ad_count >= 10 && (profile.last_ad_timestamp || "").split("T")[0] === new Date().toISOString().split("T")[0]) ? (
           <div className="p-3.5 bg-red-950/20 border border-red-500/20 text-red-400 rounded-2xl text-center space-y-1 font-mono">
@@ -1921,7 +1925,7 @@ export const DailyRewardHub: React.FC<DailyRewardHubProps> = ({
         ) : (
           <button
             onClick={handleWatchAd}
-            className="w-full py-3 bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white font-extrabold text-xs uppercase rounded-xl border-none cursor-pointer transition-all active:scale-95 shadow-md shadow-purple-500/20 font-mono tracking-wider flex items-center justify-center gap-2"
+            className="w-full py-3 bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 hover:from-purple-500 hover:to-cyan-400 text-white font-extrabold text-[#CCFF00] font-mono text-xs uppercase rounded-xl border-none cursor-pointer transition-all active:scale-95 shadow-md shadow-purple-500/20 tracking-wider flex items-center justify-center gap-2"
           >
             🎬 WATCH BROADCAST & CLAIM +50 COINS
           </button>
@@ -2406,14 +2410,14 @@ export const CustomProfileView: React.FC<CustomProfileViewProps> = ({
               <input 
                 type="file" 
                 accept="image/*" 
-                id="profile_avatar_upload" 
+                id="profile_avatar_upload_page" 
                 onChange={(e) => {
                   if (e.target.files?.[0]) handleAvatarFile(e.target.files[0]);
                 }}
                 className="hidden" 
               />
               <label 
-                htmlFor="profile_avatar_upload" 
+                htmlFor="profile_avatar_upload_page" 
                 className="inline-block py-1.5 px-3 bg-white/5 hover:bg-white/10 text-white rounded-lg text-[10px] uppercase font-bold cursor-pointer border border-white/5"
               >
                 Browse Photo File

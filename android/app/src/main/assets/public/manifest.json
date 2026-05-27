@@ -1,0 +1,25 @@
+{
+  "name": "NexaLearn AI Infinity",
+  "short_name": "NexaLearn",
+  "description": "An ultra-premium, futuristic AI-powered student ecosystem that combines social studying, gamification, and advanced productivity.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#070a14",
+  "theme_color": "#CCFF00",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://api.dicebear.com/7.x/bottts/svg?seed=NexaLearn",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "https://api.dicebear.com/7.x/bottts/svg?seed=NexaLearn",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

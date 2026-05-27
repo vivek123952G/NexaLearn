@@ -1,8 +1,10 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
-  Trophy, Search, Crown, Flame, Sparkles, Heart, Zap, Award, Star, ThumbsUp, HelpCircle
+  Trophy, Search, Crown, Flame, Sparkles, Heart, Zap, Award, Star, ThumbsUp, HelpCircle,
+  Play, Calendar, Clock, Sword, Brain, Activity, Compass, ChevronRight, UserPlus
 } from "lucide-react";
+import { NativeAd } from "./NativeAds";
 
 interface Player {
   username: string;
@@ -12,6 +14,12 @@ interface Player {
   online?: boolean;
   lastSeen?: string;
   isInteractiveUser?: boolean;
+  country: string;
+  weeklyXp: number;
+  studyTime: number; // minutes
+  battleWins: number;
+  aiUsage: number;
+  streak: number;
 }
 
 interface AnimatedLeaderboardProps {
@@ -20,6 +28,7 @@ interface AnimatedLeaderboardProps {
     avatar: string;
     league: "Bronze" | "Silver" | "Gold" | "Titan" | "Legend" | string;
     xp: number;
+    streak?: number;
   };
   allUsers: any[];
 }
@@ -31,78 +40,160 @@ interface MiniCheer {
   y: number;
 }
 
+// Country badge listing helper
+const countries = [
+  { flag: "🇺🇸", code: "US" },
+  { flag: "🇮🇳", code: "IN" },
+  { flag: "🇬🇧", code: "GB" },
+  { flag: "🇧🇷", code: "BR" },
+  { flag: "🇨🇦", code: "CA" },
+  { flag: "🇩🇪", code: "DE" },
+  { flag: "🇯🇵", code: "JP" },
+  { flag: "🇸🇬", code: "SG" },
+  { flag: "🇦🇺", code: "AU" },
+  { flag: "🇫🇷", code: "FR" },
+  { flag: "🇪🇸", code: "ES" },
+  { flag: "🇳🇱", code: "NL" },
+  { flag: "🇮🇹", code: "IT" },
+];
+
 export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({ profile, allUsers }) => {
   const [selectedLeagueTab, setSelectedLeagueTab] = useState<string>("All");
+  const [selectedCategory, setSelectedCategory] = useState<"global" | "weekly" | "study" | "battle" | "ai" | "streak">("global");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [cheers, setCheers] = useState<Record<string, MiniCheer[]>>({});
 
-  // Setup list input
-  const userCompetitorObj: Player = useMemo(() => ({
-    username: profile.username || "You",
-    avatar: profile.avatar || "https://api.dicebear.com/7.x/bottts/svg?seed=You",
-    league: (profile.league as any) || "Bronze",
-    xp: profile.xp || 0,
-    isInteractiveUser: true,
-    online: true
-  }), [profile]);
+  // Persistent user scores from localStorage with safety defaults
+  const userMetrics = useMemo(() => {
+    const cachedStudyStr = localStorage.getItem("nexa_study_minutes");
+    const cachedBattleStr = localStorage.getItem("nexa_battle_wins");
+    const cachedAiStr = localStorage.getItem("nexa_ai_queries");
 
-  const mappedCompetitors: Player[] = useMemo(() => {
-    return (allUsers || []).map(u => ({
-      username: u.username,
-      avatar: u.avatar,
+    const study = cachedStudyStr ? parseInt(cachedStudyStr, 10) : 485;
+    const battle = cachedBattleStr ? parseInt(cachedBattleStr, 10) : 24;
+    const ai = cachedAiStr ? parseInt(cachedAiStr, 10) : 42;
+    const weekly = Math.floor((profile.xp || 0) * 0.42) + 80;
+
+    return { study, battle, ai, weekly };
+  }, [profile.xp]);
+
+  // Generate deterministic attributes for users to simulate high-fidelity competitor pools
+  const getPlayerWithDerivedMetrics = (u: any, idx: number, isYou: boolean): Player => {
+    const name = u.username || "Competitor";
+    
+    // Deterministic country selection based on username characters
+    const charCodeSum = name.split("").reduce((acc: number, c: string) => acc + c.charCodeAt(0), 0);
+    const countryObj = countries[charCodeSum % countries.length];
+
+    // Derived realistic, deterministic study scores bound consistently to user XP density
+    const baseMultiplier = (charCodeSum % 15) / 10 + 0.5; // keeps it natural (0.5x to 2x)
+    const derivedWeeklyXp = isYou 
+      ? userMetrics.weekly 
+      : Math.floor((u.xp || 0) * 0.35 * baseMultiplier) + 20;
+    
+    const derivedStudyTime = isYou 
+      ? userMetrics.study 
+      : Math.floor((u.xp || 0) * 0.48 * baseMultiplier) + 40;
+    
+    const derivedBattleWins = isYou 
+      ? userMetrics.battle 
+      : Math.floor(((u.xp || 0) / 110) * baseMultiplier) + 3;
+    
+    const derivedAiUsage = isYou 
+      ? userMetrics.ai 
+      : Math.floor(((u.xp || 0) / 75) * baseMultiplier) + 6;
+    
+    const derivedStreak = isYou 
+      ? (profile.streak || 0) 
+      : (charCodeSum % 14) + 1;
+
+    return {
+      username: name,
+      avatar: u.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${name}`,
       league: u.league || "Bronze",
       xp: u.xp || 0,
-      online: u.online,
-      lastSeen: u.lastSeen,
-      isInteractiveUser: false
-    }));
-  }, [allUsers]);
+      online: isYou ? true : !!u.online,
+      lastSeen: u.lastSeen || "Offline",
+      isInteractiveUser: isYou,
+      country: countryObj.flag,
+      weeklyXp: derivedWeeklyXp,
+      studyTime: derivedStudyTime,
+      battleWins: derivedBattleWins,
+      aiUsage: derivedAiUsage,
+      streak: derivedStreak
+    };
+  };
 
-  // Combined, filtered, & sorted list
-  const filteredAndSortedList = useMemo(() => {
-    const combined = [userCompetitorObj, ...mappedCompetitors]
+  // Build the unified current user object with derived indices
+  const userCompetitorObj = useMemo(() => {
+    return getPlayerWithDerivedMetrics({ 
+      username: profile.username || "You", 
+      avatar: profile.avatar, 
+      league: profile.league || "Bronze", 
+      xp: profile.xp || 0 
+    }, 0, true);
+  }, [profile, userMetrics]);
+
+  // Map other users in the global database
+  const mappedCompetitors = useMemo(() => {
+    return (allUsers || []).map((u, i) => getPlayerWithDerivedMetrics(u, i + 1, false));
+  }, [allUsers, userMetrics]);
+
+  // Combined, filtered, & dynamically sorted lists based on active category state
+  const sortedAndFilteredPool = useMemo(() => {
+    // Unique union by username to dodge replication loops
+    const uniquePool = [userCompetitorObj, ...mappedCompetitors]
       .filter((v, i, self) => self.findIndex(t => t.username === v.username) === i);
 
-    return combined
+    return uniquePool
       .filter(p => {
         const matchesSearch = p.username.toLowerCase().includes(searchQuery.toLowerCase());
         const matchesLeague = selectedLeagueTab === "All" || p.league.toLowerCase() === selectedLeagueTab.toLowerCase();
         return matchesSearch && matchesLeague;
       })
-      .sort((a, b) => b.xp - a.xp);
-  }, [userCompetitorObj, mappedCompetitors, searchQuery, selectedLeagueTab]);
+      .sort((a, b) => {
+        // Dynamically sort based on the chosen leaderboard metric
+        if (selectedCategory === "weekly") return b.weeklyXp - a.weeklyXp;
+        if (selectedCategory === "study") return b.studyTime - a.studyTime;
+        if (selectedCategory === "battle") return b.battleWins - a.battleWins;
+        if (selectedCategory === "ai") return b.aiUsage - a.aiUsage;
+        if (selectedCategory === "streak") return b.streak - a.streak;
+        return b.xp - a.xp; // 'global'
+      });
+  }, [userCompetitorObj, mappedCompetitors, searchQuery, selectedLeagueTab, selectedCategory]);
 
-  // Absolute placement in fully unfiltered global list (to retain true rankings)
-  const trueRankingsMap = useMemo(() => {
-    const combined = [userCompetitorObj, ...mappedCompetitors]
+  // Find true ranks in unfiltered global pool of users to preserve objective worldwide stats
+  const trueWorldwideRanks = useMemo(() => {
+    const rawPool = [userCompetitorObj, ...mappedCompetitors]
       .filter((v, i, self) => self.findIndex(t => t.username === v.username) === i);
-    const sorted = combined.sort((a, b) => b.xp - a.xp);
-    const m = new Map<string, number>();
-    sorted.forEach((p, idx) => {
-      m.set(p.username, idx + 1);
+
+    const sortedByMetric = rawPool.sort((a, b) => {
+      if (selectedCategory === "weekly") return b.weeklyXp - a.weeklyXp;
+      if (selectedCategory === "study") return b.studyTime - a.studyTime;
+      if (selectedCategory === "battle") return b.battleWins - a.battleWins;
+      if (selectedCategory === "ai") return b.aiUsage - a.aiUsage;
+      if (selectedCategory === "streak") return b.streak - a.streak;
+      return b.xp - a.xp;
     });
+
+    const m = new Map<string, number>();
+    sortedByMetric.forEach((p, idx) => m.set(p.username, idx + 1));
     return m;
-  }, [userCompetitorObj, mappedCompetitors]);
+  }, [userCompetitorObj, mappedCompetitors, selectedCategory]);
 
-  // Top 3 for current filtered list or for worldwide
-  const top3 = useMemo(() => {
-    // We take top 3 from the filtered list to show specialized podium
-    return filteredAndSortedList.slice(0, 3);
-  }, [filteredAndSortedList]);
+  // Split sorted pool into Esports Podium (Top 3) and standard roster
+  const top3 = useMemo(() => sortedAndFilteredPool.slice(0, 3), [sortedAndFilteredPool]);
+  const rosterItems = useMemo(() => sortedAndFilteredPool.slice(3), [sortedAndFilteredPool]);
 
-  const bottomList = useMemo(() => {
-    return filteredAndSortedList.slice(3);
-  }, [filteredAndSortedList]);
-
-  // Trigger floating dynamic micro-particle cheers
+  // Emit float micro-cheers particle actions
   const triggerCheer = (username: string, emoji: string) => {
     const id = Date.now() + Math.random();
     const newCheer: MiniCheer = {
       id,
       emoji,
-      x: (Math.random() - 0.5) * 60, // random offset placement
-      y: -20 - Math.random() * 40
+      x: (Math.random() - 0.5) * 70, 
+      y: -25 - Math.random() * 50
     };
 
     setCheers(prev => ({
@@ -110,7 +201,6 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({ profil
       [username]: [...(prev[username] || []), newCheer]
     }));
 
-    // Clean up afterward
     setTimeout(() => {
       setCheers(prev => {
         const list = prev[username] || [];
@@ -119,38 +209,64 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({ profil
           [username]: list.filter(c => c.id !== id)
         };
       });
-    }, 1500);
+    }, 1200);
   };
 
-  const getLeaguePillStyles = (league: string) => {
+  const getLeagueBadgeStyles = (league: string) => {
     switch (league) {
       case "Legend":
-        return "bg-purple-500/10 text-[#CCFF00] border-purple-500/30";
+        return "bg-purple-500/15 text-[#CCFF00] border-purple-400/30";
       case "Titan":
-        return "bg-cyan-500/10 text-cyan-400 border-cyan-500/20";
+        return "bg-cyan-500/15 text-cyan-400 border-cyan-400/30";
       case "Gold":
-        return "bg-yellow-500/10 text-yellow-400 border-yellow-500/25";
+        return "bg-yellow-500/15 text-yellow-400 border-yellow-400/30";
       case "Silver":
-        return "bg-slate-400/10 text-slate-300 border-slate-400/15";
+        return "bg-slate-400/15 text-slate-300 border-slate-400/20";
       default:
-        return "bg-amber-600/10 text-amber-500 border-amber-600/15";
+        return "bg-amber-600/15 text-orange-400 border-orange-500/20";
     }
   };
 
-  const tabs = ["All", "Legend", "Titan", "Gold", "Silver", "Bronze"];
+  const leaderboardCategories = [
+    { id: "global", label: "Global", desc: "Lifetime Total Nexa XP", icon: <Trophy className="w-3.5 h-3.5" />, unit: "XP" },
+    { id: "weekly", label: "Weekly", desc: "This Week's Activity XP", icon: <Calendar className="w-3.5 h-3.5" />, unit: "XP" },
+    { id: "study", label: "Study Time", desc: "Minutes Concentration Count", icon: <Clock className="w-3.5 h-3.5" />, unit: "Min" },
+    { id: "battle", label: "Battle Wins", desc: "Elite Quiz Arena Victories", icon: <Sword className="w-3.5 h-3.5" />, unit: "Wins" },
+    { id: "ai", label: "AI Master", desc: "Coprocessor Prompts Resolved", icon: <Brain className="w-3.5 h-3.5" />, unit: "Queries" },
+    { id: "streak", label: "Streak", desc: "Daily Continuous Active Sync", icon: <Flame className="w-3.5 h-3.5" />, unit: "Days" },
+  ];
+
+  const getMetricValue = (player: Player, categoryId: string) => {
+    switch (categoryId) {
+      case "weekly": return `${player.weeklyXp.toLocaleString()} XP`;
+      case "study": return `${player.studyTime.toLocaleString()} Min`;
+      case "battle": return `${player.battleWins.toLocaleString()} Wins`;
+      case "ai": return `${player.aiUsage.toLocaleString()} Queries`;
+      case "streak": return `${player.streak.toLocaleString()} Days`;
+      default: return `${player.xp.toLocaleString()} XP`;
+    }
+  };
+
+  const currentCategoryObj = useMemo(() => {
+    return leaderboardCategories.find(c => c.id === selectedCategory) || leaderboardCategories[0];
+  }, [selectedCategory]);
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto" id="animated-leaderboard-container">
-      {/* Title block */}
-      <div className="text-center relative py-2">
+      
+      {/* Cybersecurity Cyber-Esports Header */}
+      <div className="text-center relative py-4 bg-black/30 rounded-[32px] border border-white/5 p-6 backdrop-blur-xl overflow-hidden shadow-2xl">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-cyan-500/5 blur-[80px] pointer-events-none rounded-full" />
+        <div className="absolute -bottom-12 -left-12 w-64 h-64 bg-purple-500/5 blur-[80px] pointer-events-none rounded-full" />
+
         <motion.div
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5, type: "spring" }}
           className="inline-block"
         >
-          <span className="text-[10px] uppercase tracking-wider text-cyan-400 font-mono font-extrabold bg-cyan-500/10 px-4 py-1.5 rounded-full border border-cyan-400/25 shadow-[0_0_15px_rgba(34,211,238,0.15)]">
-            🌟 Season Ranks Verified
+          <span className="text-[10px] uppercase tracking-widest text-[#CCFF00] font-mono font-extrabold bg-[#CCFF00]/10 px-4 py-1.5 rounded-full border border-[#CCFF00]/20 shadow-[0_0_15px_rgba(204,255,0,0.15)]">
+            🌟 NEXALEARN esports CHAMPIONSHIP
           </span>
         </motion.div>
         
@@ -158,99 +274,144 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({ profil
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1, duration: 0.4 }}
-          className="text-3xl font-black text-white mt-4 tracking-tight uppercase"
+          className="text-3xl font-black text-white mt-4 tracking-tighter uppercase font-sans bg-clip-text bg-gradient-to-r from-white via-zinc-200 to-zinc-400"
         >
-          Worldwide Competency Rankings
+          Cyberpunk Leaderboard System
         </motion.h3>
         
         <motion.p 
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2 }}
-          className="text-xs text-gray-400 mt-2 max-w-lg mx-auto leading-relaxed"
+          className="text-xs text-gray-400 mt-2 max-w-xl mx-auto leading-relaxed font-mono"
         >
-          Daily dynamic updates tracking study speed, solved math/scientific logs, and active multipliers. Keep testing your mental core!
+          Real-time tournament tables measuring academic speed metrics, compiler query solves, and active battle streaks! Complete actions to claim rank!
         </motion.p>
       </div>
 
-      {/* Interactive Tabs Menu and Live Search Panel */}
-      <div className="neo-glass rounded-3xl p-4 border-white/5 space-y-4">
+      {/* Modern Six-Leaderboard Categories Grid Tabs */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 bg-black/40 p-2 rounded-[24px] border border-white/5">
+        {leaderboardCategories.map((cat) => {
+          const isActive = selectedCategory === cat.id;
+          return (
+            <button
+              key={cat.id}
+              onClick={() => {
+                setSelectedCategory(cat.id as any);
+                setExpandedUser(null);
+              }}
+              className={`p-2.5 rounded-xl border flex flex-col items-center justify-center gap-1.5 transition-all outline-none cursor-pointer text-center select-none ${
+                isActive 
+                  ? "bg-gradient-to-br from-cyan-400/20 to-purple-600/10 border-cyan-400/40 text-cyan-300 shadow-[0_0_12px_rgba(34,211,238,0.15)]" 
+                  : "bg-[#111] hover:bg-white/5 border-white/5 text-gray-400 hover:text-white"
+              }`}
+            >
+              <span className={`p-1.5 rounded-lg ${isActive ? "bg-cyan-500/20 text-cyan-300" : "bg-black/40 text-gray-500"}`}>
+                {cat.icon}
+              </span>
+              <div className="flex flex-col">
+                <span className="text-[10px] font-black tracking-tight uppercase font-mono">{cat.label}</span>
+                <span className="text-[8px] opacity-65 font-mono">by {cat.unit}</span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* League Selection and Search Drawer */}
+      <div className="neo-glass rounded-3xl p-4 border-white/5 space-y-4 bg-black/30">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          {/* Custom sliding underline tabs */}
-          <div className="flex flex-wrap items-center gap-1.5 p-1 bg-black/40 rounded-2xl border border-white/5 self-start">
-            {tabs.map((tab) => {
+          {/* League Filter row */}
+          <div className="flex flex-wrap items-center gap-1.5 p-1 bg-black/40 rounded-2xl border border-white/5">
+            {["All", "Legend", "Titan", "Gold", "Silver", "Bronze"].map((tab) => {
               const active = selectedLeagueTab === tab;
               return (
                 <button
                   key={tab}
                   onClick={() => setSelectedLeagueTab(tab)}
-                  className={`relative px-4 py-2 text-xs font-mono font-extrabold uppercase rounded-xl transition-colors duration-300 select-none cursor-pointer ${
-                    active ? "text-black" : "text-gray-400 hover:text-white"
+                  className={`relative px-3.5 py-1.5 text-[10px] font-mono font-extrabold uppercase rounded-xl transition-colors duration-200 select-none cursor-pointer border-none ${
+                    active ? "text-cyan-900 bg-cyan-400 font-black" : "text-gray-400 hover:text-white bg-transparent"
                   }`}
-                  id={`tab-btn-${tab.toLowerCase()}`}
                 >
-                  {active && (
-                    <motion.div
-                      layoutId="activeTabUnderline"
-                      className="absolute inset-0 bg-cyan-400 rounded-xl"
-                      transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                    />
-                  )}
-                  <span className="relative z-10">{tab}</span>
+                  {tab}
                 </button>
               );
             })}
           </div>
 
-          {/* Search Box */}
+          {/* Real-time search */}
           <div className="relative min-w-[200px] md:min-w-[260px]">
-            <Search className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3top-1/2 left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search Competitors..."
+              placeholder="Search Competitor Nodes..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-black/30 border border-white/5 rounded-2xl py-2 pl-10 pr-4 text-xs text-white font-mono placeholder:text-gray-500 focus:outline-none focus:border-cyan-400/50 transition-colors"
-              id="leaderboard-search-input"
+              className="w-full bg-black/40 border border-white/5 rounded-2xl py-2 pl-10 pr-4 text-[11px] text-white font-mono placeholder:text-gray-500 focus:outline-none focus:border-cyan-400/50 transition-all focus:bg-black/60"
             />
           </div>
         </div>
       </div>
 
-      {/* Dynamic Podium View */}
-      {filteredAndSortedList.length > 0 && searchQuery === "" && (
-        <div className="text-center mt-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+      <NativeAd placement="leaderboard" className="mt-2" />
+
+      {/* Cyber-Gaming Championship Podium Display */}
+      {sortedAndFilteredPool.length > 0 && searchQuery === "" && (
+        <div className="py-6 relative overflow-hidden bg-black/25 rounded-[40px] border border-white/5 p-6 shadow-xl">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-cyan-500/[0.02] blur-3xl pointer-events-none rounded-full" />
+          
+          <div className="text-center mb-6">
+            <span className="text-[9px] uppercase tracking-widest text-[#CCFF00] font-mono font-black py-1 px-3 bg-[#CCFF00]/10 border border-[#CCFF00]/15 rounded-lg">
+              🔮 Current Category: <b className="text-white">{currentCategoryObj.label} ({currentCategoryObj.desc})</b>
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end relative z-10">
             
-            {/* Second Place Podium Unit */}
+            {/* Podium Rank #2 (Silver Champion) */}
             {top3[1] && (
               <motion.div
-                initial={{ opacity: 0, y: 50, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ type: "spring", stiffness: 100, delay: 0.1, damping: 15 }}
-                whileHover={{ y: -5 }}
-                className="neo-glass rounded-3xl p-6 border-white/5 relative bg-emerald-500/5 order-2 md:order-1 flex flex-col items-center group transition-shadow duration-300 hover:shadow-[0_4px_25px_rgba(16,185,129,0.08)]"
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ type: "spring", stiffness: 100, delay: 0.1 }}
+                whileHover={{ y: -4 }}
+                className="neo-glass rounded-3xl p-6 border-white/5 bg-slate-400/[0.03] order-2 md:order-1 flex flex-col items-center relative border group transition-all duration-300 shadow-[0_8px_30px_rgb(0,0,0,0.12)]"
               >
-                <div className="absolute top-3 right-3 text-emerald-400/60 font-mono text-xs font-black">#2</div>
-                <div className="text-sm font-extrabold text-[#CCCCCC] font-mono tracking-wider uppercase mb-1">🥈 Silver Challenger</div>
-                <div className="relative mb-3">
-                  <img src={top3[1].avatar} alt="Second Avatar" className="w-16 h-16 bg-black/50 rounded-full border-2 border-slate-400/40 p-1" />
-                  <span className="absolute -bottom-1 -right-1 bg-slate-400 text-black font-black text-[9px] w-5 h-5 flex items-center justify-center rounded-full">2</span>
+                <div className="absolute top-3.5 right-4 text-slate-400 font-mono text-xs font-black">RANK #2</div>
+                <div className="text-[10px] font-extrabold text-[#94A3B8] font-mono uppercase tracking-wider mb-2 flex items-center gap-1">
+                  🥈 Silver Podium
                 </div>
-                <span className={`text-base font-black truncate max-w-full text-white ${top3[1].isInteractiveUser ? "text-cyan-300 underline underline-offset-4 decoration-cyan-400" : ""}`}>
+
+                {/* Avatar container */}
+                <div className="relative mb-3">
+                  <div className="w-16 h-16 rounded-full bg-black/60 p-[3px] border-2 border-slate-400/70 shadow-lg relative glow-effect">
+                    <img src={top3[1].avatar} alt="" className="w-full h-full rounded-full object-cover" />
+                  </div>
+                  {/* Country Flag badge overlay */}
+                  <span className="absolute -bottom-1 -right-1 bg-slate-900 border border-slate-700/50 text-base w-6 h-6 flex items-center justify-center rounded-full shadow-md">
+                    {top3[1].country}
+                  </span>
+                </div>
+
+                <span className={`text-sm font-black truncate max-w-full text-white ${top3[1].isInteractiveUser ? "text-cyan-300 underline underline-offset-4 decoration-cyan-400" : ""}`}>
                   {top3[1].username} {top3[1].isInteractiveUser && "👤"}
                 </span>
-                <span className="text-xs text-cyan-400 font-mono font-black mt-1 py-0.5 px-2 bg-cyan-900/10 rounded-full">
-                  {top3[1].xp.toLocaleString()} XP
-                </span>
-                <div className="text-[10px] text-gray-400 uppercase font-mono mt-2 tracking-widest">{top3[1].league} LEAGUE</div>
                 
-                {/* Micro Cheer Panel */}
-                <div className="mt-4 flex gap-2">
-                  <button onClick={() => triggerCheer(top3[1].username, "🔥")} className="p-1 px-2.5 bg-white/5 hover:bg-white/10 rounded-full text-xs transition duration-200 cursor-pointer">🔥</button>
-                  <button onClick={() => triggerCheer(top3[1].username, "👏")} className="p-1 px-2.5 bg-white/5 hover:bg-white/10 rounded-full text-xs transition duration-200 cursor-pointer">👏</button>
+                <span className="text-xs text-white/90 font-mono font-black mt-2 py-0.5 px-3 bg-white/5 rounded-full border border-white/5 min-w-[100px] text-center">
+                  {getMetricValue(top3[1], selectedCategory)}
+                </span>
+
+                <div className="text-[9px] text-gray-400 uppercase font-mono mt-2 tracking-widest">
+                  {top3[1].league} LEAGUE • #{trueWorldwideRanks.get(top3[1].username)} WORLD
                 </div>
-                {/* Floating particle animations */}
+                
+                {/* Micro Reactions */}
+                <div className="mt-4 flex gap-1.5">
+                  <button onClick={() => triggerCheer(top3[1].username, "🔥")} className="p-1 px-2.5 bg-white/5 hover:bg-white/10 rounded-full text-xs transition duration-200 cursor-pointer border border-white/5">🔥</button>
+                  <button onClick={() => triggerCheer(top3[1].username, "👏")} className="p-1 px-2.5 bg-white/5 hover:bg-white/10 rounded-full text-xs transition duration-200 cursor-pointer border border-white/5">👏</button>
+                </div>
+
+                {/* Particle cheer emitter */}
                 <div className="absolute inset-x-0 bottom-16 pointer-events-none overflow-visible">
                   <AnimatePresence>
                     {(cheers[top3[1].username] || []).map(cheer => (
@@ -269,38 +430,53 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({ profil
               </motion.div>
             )}
 
-            {/* Supreme Champion Podium Unit */}
+            {/* Podium Rank #1 (Supreme Master Champion) */}
             {top3[0] && (
               <motion.div
-                initial={{ opacity: 0, y: 70, scale: 0.9 }}
-                animate={{ opacity: 1, y: 0, scale: 1.05 }}
-                transition={{ type: "spring", stiffness: 80, delay: 0, damping: 12 }}
-                whileHover={{ y: -8 }}
-                className="neo-glass rounded-[40px] p-8 border-yellow-400/20 relative bg-yellow-500/5 order-1 md:order-2 flex flex-col items-center group shadow-[0_0_40px_rgba(234,179,8,0.12)] border"
+                initial={{ opacity: 0, y: 40 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ type: "spring", stiffness: 85, delay: 0 }}
+                whileHover={{ y: -6 }}
+                className="neo-glass rounded-[40px] p-8 border-yellow-400/20 bg-yellow-500/[0.04] order-1 md:order-2 flex flex-col items-center relative border shadow-[0_0_40px_rgba(234,179,8,0.12)]"
               >
-                <div className="absolute -top-3.5 right-1/2 translate-x-1/2 bg-gradient-to-r from-yellow-400 to-amber-500 text-black text-[9px] font-black rounded-full font-mono uppercase px-4 py-1 tracking-widest flex items-center gap-1 shadow-lg">
-                  <Crown className="w-3 h-3 fill-black text-black" /> SECURE CHAMPION
+                <div className="absolute -top-3.5 right-1/2 translate-x-1/2 bg-gradient-to-r from-yellow-400 to-amber-500 text-black text-[9px] font-black rounded-full font-mono uppercase px-4.5 py-1 tracking-widest flex items-center gap-1 shadow-2xl">
+                  <Crown className="w-3.5 h-3.5 fill-black text-black" /> SECURED SUPREME
                 </div>
-                <div className="text-base font-black text-yellow-400 font-mono tracking-wider uppercase mb-1">🏆 #1 SUPREME</div>
-                <div className="relative mb-5 mt-2">
-                  <img src={top3[0].avatar} alt="First Avatar" className="w-22 h-22 bg-black/60 rounded-full border-3 border-yellow-400/90 p-1 shadow-2xl" />
-                  <span className="absolute -bottom-1 -right-1 bg-yellow-400 text-black font-black text-xs w-6 h-6 flex items-center justify-center rounded-full shadow-lg font-mono">1</span>
+                <div className="text-xs font-black text-yellow-400 font-mono tracking-wider uppercase mb-2 flex items-center gap-1">
+                  🥇 GOLD CHAMPION 👑
                 </div>
-                <span className={`text-lg font-black truncate max-w-full text-white tracking-wide ${top3[0].isInteractiveUser ? "text-cyan-200 underline underline-offset-4 decoration-[#CCFF00]" : ""}`}>
+
+                {/* Glorious Avatar */}
+                <div className="relative mb-4 mt-2">
+                  <div className="w-22 h-22 rounded-full bg-black/60 p-[4px] border-3 border-yellow-400 shadow-[0_0_25px_rgba(234,179,8,0.4)] relative glow-effect scale-105">
+                    <img src={top3[0].avatar} alt="" className="w-full h-full rounded-full object-cover" />
+                  </div>
+                  {/* Country flag overlay */}
+                  <span className="absolute bottom-0 right-0 bg-slate-900 border border-yellow-500 text-lg w-7 h-7 flex items-center justify-center rounded-full shadow-lg">
+                    {top3[0].country}
+                  </span>
+                </div>
+
+                <span className={`text-base font-black truncate max-w-full text-white tracking-wide ${top3[0].isInteractiveUser ? "text-cyan-200 underline underline-offset-4 decoration-[#CCFF00]" : ""}`}>
                   {top3[0].username} {top3[0].isInteractiveUser && "👤"}
                 </span>
-                <span className="text-sm text-[#CCFF00] font-mono font-extrabold mt-1.5 py-1 px-3.5 bg-[#CCFF00]/10 rounded-full shadow-inner border border-[#CCFF00]/20">
-                  {top3[0].xp.toLocaleString()} XP
-                </span>
-                <div className="text-[10px] text-gray-300 font-bold uppercase font-mono mt-2 tracking-widest">{top3[0].league} LEAGUE</div>
                 
-                {/* Micro Cheer Panel */}
-                <div className="mt-4 flex gap-2">
-                  <button onClick={() => triggerCheer(top3[0].username, "👑")} className="p-1 px-2.5 bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-400 rounded-full text-xs transition duration-200 cursor-pointer">👑</button>
-                  <button onClick={() => triggerCheer(top3[0].username, "⚡")} className="p-1 px-2.5 bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-400 rounded-full text-xs transition duration-200 cursor-pointer">⚡</button>
-                  <button onClick={() => triggerCheer(top3[0].username, "🚀")} className="p-1 px-2.5 bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-400 rounded-full text-xs transition duration-200 cursor-pointer">🚀</button>
+                <span className="text-sm text-[#CCFF00] font-mono font-extrabold mt-2 py-1.5 px-4 bg-[#CCFF00]/10 rounded-full shadow-inner border border-[#CCFF00]/25 min-w-[120px] text-center">
+                  {getMetricValue(top3[0], selectedCategory)}
+                </span>
+
+                <div className="text-[10px] text-gray-300 font-bold uppercase font-mono mt-2 tracking-widest">
+                  {top3[0].league} LEAGUE • #{trueWorldwideRanks.get(top3[0].username)} WORLD
                 </div>
-                {/* Floating particle animations */}
+                
+                {/* Micro Reactions */}
+                <div className="mt-4 flex gap-1.5">
+                  <button onClick={() => triggerCheer(top3[0].username, "👑")} className="p-1 px-3 bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-400 rounded-full text-xs transition duration-200 cursor-pointer border border-yellow-500/20">👑</button>
+                  <button onClick={() => triggerCheer(top3[0].username, "⚡")} className="p-1 px-3 bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-400 rounded-full text-xs transition duration-200 cursor-pointer border border-yellow-500/20">⚡</button>
+                  <button onClick={() => triggerCheer(top3[0].username, "🚀")} className="p-1 px-3 bg-yellow-400/10 hover:bg-yellow-400/20 text-yellow-400 rounded-full text-xs transition duration-200 cursor-pointer border border-yellow-500/20">🚀</button>
+                </div>
+
+                {/* Render cheers particles */}
                 <div className="absolute inset-x-0 bottom-24 pointer-events-none overflow-visible">
                   <AnimatePresence>
                     {(cheers[top3[0].username] || []).map(cheer => (
@@ -319,35 +495,50 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({ profil
               </motion.div>
             )}
 
-            {/* Third Place Podium Unit */}
+            {/* Podium Rank #3 (Bronze Challenger) */}
             {top3[2] && (
               <motion.div
-                initial={{ opacity: 0, y: 50, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ type: "spring", stiffness: 100, delay: 0.2, damping: 15 }}
-                whileHover={{ y: -5 }}
-                className="neo-glass rounded-3xl p-6 border-white/5 relative bg-orange-500/5 order-3 flex flex-col items-center group transition-shadow duration-300 hover:shadow-[0_4px_25px_rgba(249,115,22,0.08)]"
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ type: "spring", stiffness: 100, delay: 0.2 }}
+                whileHover={{ y: -4 }}
+                className="neo-glass rounded-3xl p-6 border-white/5 bg-orange-600/[0.03] order-3 flex flex-col items-center relative border group transition-all duration-300 shadow-[0_8px_30px_rgb(0,0,0,0.12)]"
               >
-                <div className="absolute top-3 right-3 text-orange-400/60 font-mono text-xs font-black">#3</div>
-                <div className="text-sm font-extrabold text-[#D97706] font-mono tracking-wider uppercase mb-1">🥉 Bronze Challenger</div>
-                <div className="relative mb-3">
-                  <img src={top3[2].avatar} alt="Third Avatar" className="w-16 h-16 bg-black/50 rounded-full border-2 border-amber-600/40 p-1" />
-                  <span className="absolute -bottom-1 -right-1 bg-amber-600 text-black font-black text-[9px] w-5 h-5 flex items-center justify-center rounded-full">3</span>
+                <div className="absolute top-3.5 right-4 text-orange-400 font-mono text-xs font-black">RANK #3</div>
+                <div className="text-[10px] font-extrabold text-[#D97706] font-mono uppercase tracking-wider mb-2 flex items-center gap-1">
+                  🥉 Bronze Podium
                 </div>
-                <span className={`text-base font-black truncate max-w-full text-white ${top3[2].isInteractiveUser ? "text-cyan-300 underline underline-offset-4 decoration-cyan-400" : ""}`}>
+
+                {/* Avatar Frame */}
+                <div className="relative mb-3">
+                  <div className="w-16 h-16 rounded-full bg-black/60 p-[3px] border-2 border-orange-500/60 shadow-lg relative glow-effect">
+                    <img src={top3[2].avatar} alt="" className="w-full h-full rounded-full object-cover" />
+                  </div>
+                  {/* flag badge */}
+                  <span className="absolute -bottom-1 -right-1 bg-slate-900 border border-orange-700/50 text-base w-6 h-6 flex items-center justify-center rounded-full shadow-md">
+                    {top3[2].country}
+                  </span>
+                </div>
+
+                <span className={`text-sm font-black truncate max-w-full text-white ${top3[2].isInteractiveUser ? "text-cyan-300 underline underline-offset-4 decoration-cyan-400" : ""}`}>
                   {top3[2].username} {top3[2].isInteractiveUser && "👤"}
                 </span>
-                <span className="text-xs text-cyan-400 font-mono font-black mt-1 py-0.5 px-2 bg-cyan-900/10 rounded-full">
-                  {top3[2].xp.toLocaleString()} XP
-                </span>
-                <div className="text-[10px] text-gray-400 uppercase font-mono mt-2 tracking-widest">{top3[2].league} LEAGUE</div>
                 
-                {/* Micro Cheer Panel */}
-                <div className="mt-4 flex gap-2">
-                  <button onClick={() => triggerCheer(top3[2].username, "👍")} className="p-1 px-2.5 bg-white/5 hover:bg-white/10 rounded-full text-xs transition duration-200 cursor-pointer">👍</button>
-                  <button onClick={() => triggerCheer(top3[2].username, "💖")} className="p-1 px-2.5 bg-white/5 hover:bg-white/10 rounded-full text-xs transition duration-200 cursor-pointer">💖</button>
+                <span className="text-xs text-white/90 font-mono font-black mt-2 py-0.5 px-3 bg-white/5 rounded-full border border-white/5 min-w-[100px] text-center">
+                  {getMetricValue(top3[2], selectedCategory)}
+                </span>
+
+                <div className="text-[9px] text-gray-400 uppercase font-mono mt-2 tracking-widest">
+                  {top3[2].league} LEAGUE • #{trueWorldwideRanks.get(top3[2].username)} WORLD
                 </div>
-                {/* Floating particle animations */}
+                
+                {/* Micro Reactions */}
+                <div className="mt-4 flex gap-1.5">
+                  <button onClick={() => triggerCheer(top3[2].username, "👍")} className="p-1 px-2.5 bg-white/5 hover:bg-white/10 rounded-full text-xs transition duration-200 cursor-pointer border border-white/5">👍</button>
+                  <button onClick={() => triggerCheer(top3[2].username, "💖")} className="p-1 px-2.5 bg-white/5 hover:bg-white/10 rounded-full text-xs transition duration-200 cursor-pointer border border-white/5">💖</button>
+                </div>
+
+                {/* cheer float */}
                 <div className="absolute inset-x-0 bottom-16 pointer-events-none overflow-visible">
                   <AnimatePresence>
                     {(cheers[top3[2].username] || []).map(cheer => (
@@ -370,63 +561,69 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({ profil
         </div>
       )}
 
-      {/* Roster & Complete Competitor List */}
-      <div className="neo-glass rounded-[32px] p-6 border-white/5 space-y-4">
-        <div className="flex items-center justify-between pb-2 border-b border-white/5">
+      {/* Leaderboard Competitor List Roster Section */}
+      <div className="neo-glass rounded-[32px] p-6 border-white/5 space-y-4 bg-black/40">
+        <div className="flex items-center justify-between pb-3 border-b border-white/5">
           <div className="flex items-center gap-2">
-            <Trophy className="w-4 h-4 text-[#CCFF00]" />
-            <span className="text-xs text-gray-300 uppercase tracking-widest font-mono font-bold">Roster Rankings Leaderboard</span>
+            <Trophy className="w-4 h-4 text-cyan-400" />
+            <span className="text-xs text-gray-300 uppercase tracking-widest font-mono font-bold">Championship Roster Competitors</span>
           </div>
-          <span className="text-[10px] text-gray-400 font-mono">{filteredAndSortedList.length} Competitors Listed</span>
+          <span className="text-[10px] text-gray-400 font-mono uppercase tracking-wider">{sortedAndFilteredPool.length} verified nodes loaded</span>
         </div>
 
-        {filteredAndSortedList.length === 0 ? (
-          <div className="py-12 text-center text-gray-500 font-mono text-xs">
-            No student competitors match search parameters in this tier.
+        {sortedAndFilteredPool.length === 0 ? (
+          <div className="py-16 text-center text-gray-500 font-mono text-xs border border-dashed border-white/5 rounded-2xl">
+            No competitor nodes found matching query boundaries.
           </div>
         ) : (
           <motion.div 
             layout
-            className="space-y-2.5 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar"
+            className="space-y-3 max-h-[520px] overflow-y-auto pr-1.5 custom-scrollbar"
           >
             <AnimatePresence mode="popLayout">
-              {filteredAndSortedList.map((player, index) => {
+              {sortedAndFilteredPool.map((player, index) => {
                 const isYou = player.isInteractiveUser;
-                const absoluteRank = trueRankingsMap.get(player.username) || (index + 1);
+                const absoluteRank = trueWorldwideRanks.get(player.username) || (index + 1);
                 const isExpanded = expandedUser === player.username;
 
-                // Calculate sub progress to next league max (approximate visual)
-                const nextLeagueXpGoal = player.xp < 1000 ? 1000 : player.xp < 3000 ? 3000 : player.xp < 6000 ? 6000 : player.xp < 10000 ? 10000 : 20000;
-                const progressPercentage = Math.min(100, Math.floor((player.xp / nextLeagueXpGoal) * 100));
+                // Level up XP/progress boundary bar calculation
+                const nextGoalXp = player.xp < 1000 ? 1000 : player.xp < 3500 ? 3500 : player.xp < 7500 ? 7500 : player.xp < 12000 ? 12000 : 25000;
+                const progressPct = Math.min(100, Math.floor((player.xp / nextGoalXp) * 100));
 
                 return (
                   <motion.div
                     key={player.username}
-                    layout // dynamic layout re-ordering animation
+                    layout 
                     initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95 }}
                     transition={{ type: "spring", stiffness: 350, damping: 30 }}
                     className={`rounded-2xl border cursor-pointer select-none overflow-hidden transition-all duration-300 ${
                       isYou 
-                        ? 'bg-cyan-500/10 border-cyan-400/35 shadow-[0_0_15px_rgba(34,211,238,0.05)]' 
-                        : 'bg-black/25 border-white/5 hover:bg-black/35 hover:border-white/10'
+                        ? 'bg-gradient-to-r from-cyan-950/40 to-black border-cyan-400/40 shadow-[0_0_15px_rgba(34,211,238,0.1)]' 
+                        : 'bg-black/35 border-white/5 hover:bg-black/55 hover:border-white/10'
                     }`}
                     onClick={() => setExpandedUser(isExpanded ? null : player.username)}
                   >
-                    {/* Primary Row Content */}
+                    {/* Primary row */}
                     <div className="flex items-center justify-between p-3 flex-wrap gap-2 md:gap-4">
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        {/* Rank Pill */}
-                        <div className="w-9 h-9 shrink-0 rounded-xl bg-black/40 border border-white/5 flex items-center justify-center font-mono text-xs font-bold font-black text-gray-300">
+                      <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                        
+                        {/* Dynamic Esports Rank Badge */}
+                        <div className={`w-9 h-9 shrink-0 rounded-xl bg-black/60 border flex items-center justify-center font-mono text-[11px] font-black ${
+                          absoluteRank === 1 ? 'border-yellow-400 text-yellow-400 shadow-[0_0_8px_rgba(234,179,8,0.2)]' :
+                          absoluteRank === 2 ? 'border-zinc-400 text-zinc-300' :
+                          absoluteRank === 3 ? 'border-orange-500 text-orange-400' :
+                          'border-white/5 text-gray-400'
+                        }`}>
                           #{absoluteRank}
                         </div>
 
-                        {/* Avatar with status glow */}
+                        {/* Avatar with country flag side placement */}
                         <div className="relative shrink-0">
                           <img 
                             src={player.avatar} 
-                            alt={`${player.username}'s Avatar`} 
+                            alt="" 
                             className={`w-9 h-9 rounded-full bg-black/40 ${
                               isYou 
                                 ? 'border-2 border-cyan-400' 
@@ -434,53 +631,56 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({ profil
                             }`}
                           />
                           {player.online && (
-                            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#090b11]" />
+                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#090b11]" />
                           )}
                         </div>
 
-                        {/* User basic metrics */}
+                        {/* User Identifiers and country badge */}
                         <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className={`text-xs font-extrabold block truncate ${isYou ? 'text-cyan-300 text-sm' : 'text-white'}`}>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-bold text-white flex items-center gap-1.5">
                               {player.username}
+                              <span className="text-sm" title="Country Badge">{player.country}</span>
                             </span>
                             {isYou && (
-                              <span className="shrink-0 bg-cyan-400 text-black font-black font-mono text-[8.5px] px-1.5 py-0.5 rounded uppercase">
+                              <span className="shrink-0 bg-cyan-400 text-black font-black font-mono text-[8px] px-1.5 py-0.5 rounded">
                                 YOU
                               </span>
                             )}
                           </div>
                           
-                          <div className="flex items-center gap-1.5 mt-0.5 text-[9px] text-[#8C8F9F] font-mono">
-                            <span className={`px-1.5 py-0.5 rounded-full border text-[8px] uppercase tracking-wider font-extrabold ${getLeaguePillStyles(player.league)}`}>
+                          <div className="flex items-center gap-2 mt-0.5 text-[9px] text-[#8C8F9F] font-mono">
+                            <span className={`px-2 py-0.5 rounded-full border text-[8px] uppercase tracking-wider font-extrabold ${getLeagueBadgeStyles(player.league)}`}>
                               {player.league}
                             </span>
                             {player.online ? (
-                              <span className="text-emerald-400 text-[8px]">Active</span>
+                              <span className="text-emerald-400 font-bold flex items-center gap-1">● Active</span>
                             ) : (
-                              <span className="text-gray-500 text-[8px]">{player.lastSeen || "Offline"}</span>
+                              <span className="text-gray-500">{player.lastSeen}</span>
                             )}
                           </div>
                         </div>
                       </div>
 
-                      {/* Right aligned XP display */}
-                      <div className="flex items-center gap-3 self-end md:self-center">
+                      {/* Right aligned category value */}
+                      <div className="flex items-center gap-3">
                         <div className="text-right">
-                          <span className="text-xs font-mono text-cyan-400 font-extrabold block">
-                            {player.xp.toLocaleString()} XP
+                          <span className="text-xs font-mono text-cyan-400 font-black block">
+                            {getMetricValue(player, selectedCategory)}
                           </span>
-                          <span className="text-[8px] text-gray-500 uppercase tracking-widest font-mono block">accumulated</span>
+                          <span className="text-[8px] text-gray-500 uppercase tracking-widest font-mono block">
+                            {currentCategoryObj.label} Score
+                          </span>
                         </div>
                         
-                        {/* Compact Row Cheer buttons */}
+                        {/* Quick rows reaction cheers */}
                         <div className="flex items-center gap-1 relative z-20">
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
                               triggerCheer(player.username, "🔥");
                             }}
-                            className="w-7 h-7 bg-white/5 hover:bg-white/10 text-[11px] rounded-lg transition flex items-center justify-center p-0 float-right cursor-pointer"
+                            className="w-7 h-7 bg-white/5 hover:bg-white/10 text-[11px] rounded-lg transition flex items-center justify-center p-0 cursor-pointer border border-white/5"
                           >
                             🔥
                           </button>
@@ -488,14 +688,28 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({ profil
                       </div>
                     </div>
 
-                    {/* Floating mini cheers animation for roster row */}
+                    {/* Progress slider layout at bottom border */}
+                    <div className="px-3 pb-1 border-t border-white/[0.02]">
+                      <div className="flex justify-between items-center text-[7.5px] text-gray-500 font-mono mt-0.5">
+                        <span>XP ACCUMULATION PROGRESS</span>
+                        <span>{player.xp}/{nextGoalXp} XP ({progressPct}%)</span>
+                      </div>
+                      <div className="h-1 bg-black/60 rounded-full overflow-hidden mt-1 mb-1 border border-white/5">
+                        <div 
+                          className="h-full bg-gradient-to-r from-cyan-400 to-[#7B61FF]" 
+                          style={{ width: `${progressPct}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Render floats cheers */}
                     <div className="absolute inset-x-0 bottom-6 pointer-events-none overflow-visible">
                       <AnimatePresence>
                         {(cheers[player.username] || []).map(cheer => (
                           <motion.div
                             key={cheer.id}
                             initial={{ opacity: 1, scale: 0.5, y: 0, x: cheer.x + 80 }}
-                            animate={{ opacity: 0, scale: 1.4, y: cheer.y - 20, x: cheer.x + 90 }}
+                            animate={{ opacity: 0, scale: 1.4, y: cheer.y - 15, x: cheer.x + 95 }}
                             exit={{ opacity: 0 }}
                             className="absolute text-lg font-bold select-none right-12 z-40"
                           >
@@ -505,66 +719,50 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({ profil
                       </AnimatePresence>
                     </div>
 
-                    {/* Expanded Drawer Statistics details */}
+                    {/* Expandable details card */}
                     <AnimatePresence>
                       {isExpanded && (
                         <motion.div
                           initial={{ height: 0, opacity: 0 }}
                           animate={{ height: "auto", opacity: 1 }}
                           exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.3 }}
-                          className="bg-black/35 border-t border-white/5 overflow-hidden"
+                          transition={{ duration: 0.25 }}
+                          className="bg-black/30 border-t border-white/5 overflow-hidden"
                         >
-                          <div className="p-4 space-y-3.5 text-xs">
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-black/40 rounded-xl p-3 border border-white/5">
+                          <div className="p-4 space-y-4 text-xs font-mono">
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-black/50 rounded-xl p-3 border border-white/5">
                               <div>
-                                <span className="text-[9px] text-gray-400 font-mono uppercase block">League Class</span>
-                                <span className="text-xs font-black text-white font-mono">{player.league} League</span>
+                                <span className="text-[8.5px] text-gray-400 uppercase block mb-0.5">Weekly XP Target</span>
+                                <span className="text-xs font-bold text-white">{player.weeklyXp.toLocaleString()} XP</span>
                               </div>
                               <div>
-                                <span className="text-[9px] text-gray-400 font-mono uppercase block">Accuracy Coefficient</span>
-                                <span className="text-xs font-black text-[#CCFF00] font-mono">94.8% ACC</span>
+                                <span className="text-[8.5px] text-gray-400 uppercase block mb-0.5">Focus Minutes</span>
+                                <span className="text-xs font-bold text-cyan-300">{player.studyTime.toLocaleString()} Min studied</span>
                               </div>
                               <div>
-                                <span className="text-[9px] text-gray-400 font-mono uppercase block">Weekly Streak</span>
-                                <span className="text-xs font-bold text-white font-mono flex items-center gap-1">
-                                  <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" /> 5 Days
+                                <span className="text-[8.5px] text-gray-400 uppercase block mb-0.5">AI Query Logs</span>
+                                <span className="text-xs font-bold text-purple-300">{player.aiUsage.toLocaleString()} solves</span>
+                              </div>
+                              <div>
+                                <span className="text-[8.5px] text-gray-400 uppercase block mb-0.5">Active Streak</span>
+                                <span className="text-xs font-bold text-[#CCFF00] flex items-center gap-1">
+                                  🔥 {player.streak} continuous days
                                 </span>
                               </div>
-                              <div>
-                                <span className="text-[9px] text-gray-400 font-mono uppercase block">Calculated Tier</span>
-                                <span className="text-xs font-black text-cyan-400 font-mono">ALGEBRAIC TIER 2</span>
-                              </div>
                             </div>
 
-                            {/* League goal progress bar */}
-                            <div className="space-y-1.5">
-                              <div className="flex justify-between items-center text-[9px] font-mono">
-                                <span className="text-gray-400 uppercase">Tier Acceleration to {player.league === "Legend" ? "Grandmaster" : "Next Tier"}</span>
-                                <span className="text-cyan-300 font-bold">{progressPercentage}% ({player.xp} / {nextLeagueXpGoal} XP)</span>
-                              </div>
-                              <div className="h-2 w-full bg-black/50 overflow-hidden rounded-full border border-white/5">
-                                <motion.div 
-                                  initial={{ width: 0 }}
-                                  animate={{ width: `${progressPercentage}%` }}
-                                  transition={{ delay: 0.1, duration: 0.8, type: "tween" }}
-                                  className="h-full bg-gradient-to-r from-cyan-500 to-purple-600 rounded-full"
-                                />
-                              </div>
-                            </div>
-
-                            {/* Cheers / Interactive quick greetings panel */}
-                            <div className="flex items-center gap-2 flex-wrap pt-1.5">
-                              <span className="text-[9px] text-gray-400 font-mono uppercase">Cheer and celebrate competitor node:</span>
+                            {/* Additional Cheer Controls */}
+                            <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-white/[0.04]">
+                              <span className="text-[8.5px] text-gray-400">SEND SECURE CHEER SIGNAL:</span>
                               <div className="flex gap-1.5">
-                                {["🔥", "👏", "⚡", "💖", "🚀", "👍"].map(em => (
+                                {["🔥", "👏", "👑", "💖", "🚀", "👍"].map(em => (
                                   <button
                                     key={em}
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       triggerCheer(player.username, em);
                                     }}
-                                    className="p-1 px-2.5 bg-white/5 hover:bg-white/10 active:scale-95 rounded-lg text-xs transition duration-150 border border-white/5 cursor-pointer"
+                                    className="p-1 px-2.5 bg-white/5 hover:bg-white/10 active:scale-95 rounded-lg text-xs transition border border-white/5 cursor-pointer"
                                   >
                                     {em}
                                   </button>
