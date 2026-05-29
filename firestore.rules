@@ -1,8 +1,81 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // Reusable, hardened global security credentials rules
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Default global deny-all fallback safety net
     match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =====================================
+    // USER PROFILES & ACADEMIC DATA
+    // =====================================
+    match /users/{username} {
+      // Leaderboard requires reading other profiles. Allowed globally to compile rows.
+      allow read: if true;
+      // Allow users to design and update profiles
+      allow create, update: if isSignedIn();
+      // Block administrative or destructive removals by client
+      allow delete: if false;
+
+      // Coursework tasks subcollection
+      match /tasks/{taskId} {
+        allow read, write: if isSignedIn();
+      }
+
+      // Doubts chat logs sequences
+      match /chats/{chatId} {
+        allow read, write: if isSignedIn();
+      }
+
+      // System-tracked rewarded video impressions logs
+      match /ad_sessions/{sessionId} {
+        allow read, write: if isSignedIn();
+      }
+    }
+
+    // =====================================
+    // ECOSYSTEM FEED & TIKTOK REELS
+    // =====================================
+    match /reels/{reelId} {
+      // Streamed worldwide to compile TikTok list
+      allow read: if true;
+      allow create, update, delete: if isSignedIn();
+    }
+
+    match /posts/{postId} {
+      // Main public learning forum is readable globally
+      allow read: if true;
+      allow create, update, delete: if isSignedIn();
+    }
+
+    // =====================================
+    // CRITICAL SYSTEMS & FAILURE TELEMETRY
+    // =====================================
+    // Moderation and spam prevention reports
+    match /reports/{reportId} {
+      allow read, create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    // Connection sanity checks
+    match /connection_test/health {
       allow read, write: if true;
+    }
+
+    // Failure diagnostics log entries
+    match /errors/{errorId} {
+      allow create: if true; // Allow writing telemetry logs even when auth is disconnected
+      allow read, update, delete: if false;
     }
   }
 }

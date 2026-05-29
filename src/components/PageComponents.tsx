@@ -1507,6 +1507,181 @@ export const NexaVerseCampus: React.FC<NexaVerseCampusProps> = ({ onGrantRewards
 };
 
 // ==========================================
+// 8. DYNAMIC VISUAL CALENDAR HEATMAP COMPONENT
+// ==========================================
+const StreakCalendarHeatmap: React.FC<{ 
+  checkedBlocks: number[]; 
+  nextExpected: number; 
+  onAddNotification: (title: string, msg: string, type: 'info' | 'success' | 'alert' | 'friend_request') => void;
+}> = ({ checkedBlocks, nextExpected, onAddNotification }) => {
+  const [hoveredDay, setHoveredDay] = useState<number | null>(null);
+
+  const getDayActivity = (idx: number) => {
+    const isChecked = checkedBlocks.includes(idx);
+    const isFuture = idx > nextExpected;
+    
+    if (isChecked) {
+      return {
+        level: 4,
+        label: "Mastery Sync ✔",
+        desc: "Interactive attendance verified, live database ledger update complete.",
+        xp: 20 + (idx + 1) * 5,
+        coins: 50 + (idx + 1) * 15,
+        actions: ["Logged attendance successfully", "Synchronized cloud node profile", "Received active continuous multipliers"]
+      };
+    }
+    
+    if (isFuture) {
+      return {
+        level: 0,
+        label: "Locked Target 🔒",
+        desc: "Complete preceding standard study tracks to unlock this node.",
+        xp: 0,
+        coins: 0,
+        actions: ["Pending sequence verification"]
+      };
+    }
+    
+    if (idx === nextExpected) {
+      return {
+        level: 1, // Ready
+        label: "Pending Cooldown ⏳",
+        desc: "Active task slot ready! Click a day card below to check in and sync.",
+        xp: 0,
+        coins: 0,
+        actions: ["Immediate synchronization slot open"]
+      };
+    }
+    
+    const seed = (idx * 17) % 3;
+    const mockLevels = [
+      {
+        level: 1,
+        label: "Doubt Review",
+        desc: "Reviewed flashcards and searched AI standard curricular terms.",
+        xp: 15,
+        coins: 10,
+        actions: ["Completed STEM vocabulary revisions"]
+      },
+      {
+        level: 2,
+        label: "Quiz Completion",
+        desc: "Solved 1 interactive doubt drill in STEM branches.",
+        xp: 45,
+        coins: 20,
+        actions: ["Achieved 80%+ on Geometry practice quiz"]
+      },
+      {
+        level: 3,
+        label: "Pronunciation Drills",
+        desc: "Practiced speech cadence and voice print with AI teacher.",
+        xp: 85,
+        coins: 35,
+        actions: ["Scored 92% accuracy on Photosynthesis pronunciation test"]
+      }
+    ];
+    return mockLevels[seed];
+  };
+
+  const getLevelColor = (level: number, isPulsing: boolean) => {
+    switch (level) {
+      case 0: return "bg-zinc-900 border border-white/5 opacity-40 text-gray-600";
+      case 1: return "bg-emerald-950/30 border border-emerald-900/20 text-emerald-400";
+      case 2: return "bg-[#CCFF00]/10 border border-[#CCFF00]/20 text-emerald-300";
+      case 3: return "bg-emerald-500/35 border border-emerald-400/20 text-emerald-100 shadow-[0_0_5px_rgba(16,185,129,0.15)]";
+      case 4: return "bg-[#CCFF00] border border-[#CCFF00] text-black shadow-[0_0_8px_#CCFF00]";
+      default: return "bg-zinc-800";
+    }
+  };
+
+  return (
+    <div className="bg-black/30 border border-white/5 rounded-2xl p-4 text-left space-y-3">
+      <div className="flex justify-between items-center flex-wrap gap-2">
+        <div>
+          <span className="text-[10px] font-mono text-[#CCFF00] uppercase tracking-wider font-extrabold flex items-center gap-1.5 font-bold">
+            <span className="w-1.5 h-1.5 bg-[#CCFF00] rounded-full animate-pulse" />
+            Attendance Activity Spectrogram Graph
+          </span>
+          <h5 className="text-xs font-black text-white mt-0.5">30-Day Calendar Heatmap</h5>
+        </div>
+        
+        {/* Simple Legend */}
+        <div className="flex items-center gap-1 font-mono text-[8px] text-gray-500 select-none">
+          <span>Less</span>
+          <span className="w-2.5 h-2.5 rounded bg-zinc-900 border border-white/5" />
+          <span className="w-2.5 h-2.5 rounded bg-emerald-950/30 border border-emerald-900/20" />
+          <span className="w-2.5 h-2.5 rounded bg-[#CCFF00]/10 border border-[#CCFF00]/20" />
+          <span className="w-2.5 h-2.5 rounded bg-emerald-500/35 border border-emerald-400/20" />
+          <span className="w-2.5 h-2.5 rounded bg-[#CCFF00]" />
+          <span>More</span>
+        </div>
+      </div>
+
+      {/* Heatmap Grid (10 columns x 3 rows) */}
+      <div className="grid grid-cols-10 gap-1.5 p-1 bg-black/20 rounded-xl border border-white/5">
+        {Array.from({ length: 30 }, (_, idx) => {
+          const act = getDayActivity(idx);
+          const isExpected = idx === nextExpected;
+          const isPulsing = isExpected && !checkedBlocks.includes(idx);
+          
+          return (
+            <div
+              key={idx}
+              onMouseEnter={() => setHoveredDay(idx)}
+              onMouseLeave={() => setHoveredDay(null)}
+              onClick={() => {
+                setHoveredDay(idx);
+                onAddNotification("Heatmap Node Select", `Viewing telemetry metrics for Day ${idx + 1}`, "info");
+              }}
+              className={`aspect-square rounded-md flex items-center justify-center text-[8px] font-mono font-black transition-all relative ${getLevelColor(act.level, isPulsing)} ${isPulsing ? "animate-pulse border-cyan-400 ring-1 ring-cyan-400/50 scale-105" : "hover:scale-110 cursor-help"}`}
+              title={`Day ${idx + 1}: ${act.label}`}
+            >
+              {idx + 1}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Dynamic Hover Details Panel */}
+      <div className="bg-black/50 border border-white/5 rounded-xl p-3 min-h-[64px] transition-all flex flex-col justify-center">
+        {hoveredDay !== null ? (() => {
+          const act = getDayActivity(hoveredDay);
+          return (
+            <div className="animate-fade-in text-left space-y-1">
+              <div className="flex justify-between items-center">
+                <span className="text-[10px] font-mono uppercase font-black text-white flex items-center gap-1.5">
+                  📁 Day {hoveredDay + 1}: {act.label}
+                  {act.level === 4 && <span className="text-[#CCFF00] text-[8px]">✓ Sync Complete</span>}
+                </span>
+                {act.xp > 0 && (
+                  <span className="font-mono text-[9px] text-[#CCFF00]">
+                    +{act.xp} XP • +{act.coins} NEXA
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-gray-300 font-sans leading-tight">{act.desc}</p>
+              {act.actions.length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {act.actions.map((actItem, i) => (
+                    <span key={i} className="text-[8px] font-mono bg-white/5 border border-white/5 text-gray-400 px-1.5 py-0.2 rounded">
+                      • {actItem}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })() : (
+          <div className="text-center font-mono text-[9px] text-gray-500 py-1">
+            💡 Hover over or tap any coordinate node above to parse study record benchmarks!
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
 // 8. DAILY STREAKS ATTENDANCE CENTER (REPLACED SPIN AND EARN LOOP)
 // ==========================================
 interface DailyRewardHubProps {
@@ -1811,6 +1986,15 @@ export const DailyRewardHub: React.FC<DailyRewardHubProps> = ({
           <span className="text-[8px] font-mono text-yellow-400 block tracking-widest uppercase">ACTIVE STREAK</span>
           <span className="text-xl font-mono font-black text-white">{displayedStreak} Days</span>
         </div>
+      </div>
+
+      {/* Visual Activity Heatmap Component */}
+      <div className="mb-5">
+        <StreakCalendarHeatmap 
+          checkedBlocks={checkedBlocks} 
+          nextExpected={checkedBlocks.length} 
+          onAddNotification={onAddNotification}
+        />
       </div>
 
       {/* SEGMENT TAB SWITCHERS */}

@@ -36,6 +36,9 @@ import { LanguageTutorView } from "./components/LanguageTutorView";
 import { TalkTeacherView } from "./components/TalkTeacherView";
 import { AnimatedLeaderboard } from "./components/AnimatedLeaderboard";
 import { admobService } from "./lib/AdMobService";
+import { AdBanner } from "./components/AdBanner";
+import { pushNotificationsService } from "./lib/pushNotifications";
+import { IntegrationTester } from "./components/IntegrationTester";
 
 interface StreakBoosterButtonProps {
   streak: number;
@@ -117,6 +120,16 @@ const StreakBoosterButton: React.FC<StreakBoosterButtonProps> = ({ streak, onAdv
 export default function App() {
   // Global States
   const [currentPage, setCurrentPage] = useState<string>("startup");
+  
+  // Real-time ticking state for premium timers
+  const [appTimeNow, setAppTimeNow] = useState<number>(Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setAppTimeNow(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
   const [username, setUsername] = useState<string>("");
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
@@ -310,6 +323,53 @@ export default function App() {
   // Custom non-blocking alert modal state to substitute for sandboxed window.alert blocks
   const [customAlert, setCustomAlert] = useState<{ isOpen: boolean; message: string; title?: string } | null>(null);
 
+  // User simulated rewarded ad trigger modal state
+  const [simulatedRewardAd, setSimulatedRewardAd] = useState<{
+    isOpen: boolean;
+    onReward: () => void;
+    onDismiss: () => void;
+    timer: number;
+    rewardClaimed: boolean;
+  } | null>(null);
+
+  // Countdown timer thread for simulated rewarded ad modal
+  useEffect(() => {
+    if (!simulatedRewardAd || !simulatedRewardAd.isOpen || simulatedRewardAd.timer <= 0) return;
+    const interval = setTimeout(() => {
+      setSimulatedRewardAd(prev => {
+        if (!prev) return null;
+        const nextTimer = prev.timer - 1;
+        return {
+          ...prev,
+          timer: nextTimer,
+          rewardClaimed: nextTimer <= 0 ? true : prev.rewardClaimed
+        };
+      });
+    }, 1000);
+    return () => clearTimeout(interval);
+  }, [simulatedRewardAd?.isOpen, simulatedRewardAd?.timer]);
+
+  // Listen for simulated AdMob rewarded ad triggers from any component
+  useEffect(() => {
+    const handleSimulatedAdTrigger = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { onReward, onDismiss } = customEvent.detail || {};
+      if (onReward) {
+        setSimulatedRewardAd({
+          isOpen: true,
+          onReward,
+          onDismiss: onDismiss || (() => {}),
+          timer: 10,
+          rewardClaimed: false
+        });
+      }
+    };
+    window.addEventListener("nexasnap_trigger_simulated_rewarded_ad", handleSimulatedAdTrigger);
+    return () => {
+      window.removeEventListener("nexasnap_trigger_simulated_rewarded_ad", handleSimulatedAdTrigger);
+    };
+  }, []);
+
   useEffect(() => {
     window.alert = (msg: string) => {
       let title = "⚠️ Nexa System Message";
@@ -328,6 +388,30 @@ export default function App() {
     }).catch(err => {
       console.warn("App AdMob initialization bypassed:", err);
     });
+  }, []);
+
+  // Sync / register Push Notifications on user login
+  useEffect(() => {
+    if (isLoggedIn && profile.username) {
+      pushNotificationsService.init(profile.username).catch(err => {
+        console.warn("Push initialization failed: ", err);
+      });
+    }
+  }, [isLoggedIn, profile.username]);
+
+  // Listen for simulated/real Push Notification received events and render alert
+  useEffect(() => {
+    const handlePushReceived = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const { title, body } = customEvent.detail || {};
+      if (title && body) {
+        addNotification(title, body, "success");
+      }
+    };
+    window.addEventListener("nexasnap_push_received", handlePushReceived);
+    return () => {
+      window.removeEventListener("nexasnap_push_received", handlePushReceived);
+    };
   }, []);
   
   const toggleOfflineMode = (val: boolean) => {
@@ -701,6 +785,21 @@ export default function App() {
       setClaimedDaysCount(dayCount);
     }
   }, [isLoggedIn, currentPage]);
+
+  // Automated premium expiration check
+  useEffect(() => {
+    if (isLoggedIn && profile?.premiumExpiry) {
+      if (Date.now() >= profile.premiumExpiry && profile.premiumTier !== 'FREE') {
+        const updated = {
+          ...profile,
+          premiumTier: 'FREE' as any,
+          premiumExpiry: undefined
+        };
+        saveProfile(updated);
+        addNotification("🎫 Subscription Expired", "Your active Premium / VIP Pass period has ended. Upgrade again to reclaim multipliers!", "alert");
+      }
+    }
+  }, [isLoggedIn, profile?.premiumExpiry, profile?.premiumTier]);
 
   // Automated 200 Daily Coins Multiplier Pass reward logic from viral reels
   useEffect(() => {
@@ -1215,21 +1314,40 @@ export default function App() {
       return;
     }
 
+    // Assign complimentary premium pass timer bonus based on rarity (Common=1day, Rare/Epic=30days, Legendary/Mythic=365days)
+    let bonusMs = 24 * 60 * 60 * 1000; // Common = 1 Day (24 hours)
+    let label = "1 Day (24 Hours)";
+    if (item.rarity === 'Rare' || item.rarity === 'Epic') {
+      bonusMs = 30 * 24 * 60 * 60 * 1000; // 30 Days
+      label = "1 Month (30 Days)";
+    } else if (item.rarity === 'Legendary' || item.rarity === 'Mythic') {
+      bonusMs = 365 * 24 * 60 * 60 * 1000; // 365 Days
+      label = "1 Year (365 Days)";
+    }
+
+    const baseExpiry = (profile.premiumExpiry && profile.premiumExpiry > Date.now()) ? profile.premiumExpiry : Date.now();
+    const targetExpiry = baseExpiry + bonusMs;
+    const nextTier = profile.premiumTier === 'FREE' ? 'NEXA_PLUS' : profile.premiumTier;
+
     if (item.type === 'theme') {
       saveProfile({
         ...profile,
         coins: profile.coins - item.price,
         unlockedThemes: [...profile.unlockedThemes, item.unlockedContent],
-        activeTheme: item.unlockedContent
+        activeTheme: item.unlockedContent,
+        premiumTier: nextTier,
+        premiumExpiry: targetExpiry
       });
     } else {
       saveProfile({
         ...profile,
         coins: profile.coins - item.price,
-        cosmetics: [...profile.cosmetics, item.unlockedContent]
+        cosmetics: [...profile.cosmetics, item.unlockedContent],
+        premiumTier: nextTier,
+        premiumExpiry: targetExpiry
       });
     }
-    addNotification("Store Purchase Complete", `Unlocked ${item.name}! Spent ${item.price} NEXA.`, "success");
+    addNotification("Store Purchase Complete", `Unlocked ${item.name} Premium Object! +${label} VIP timer bonus active!`, "success");
   };
 
   // Post inside Student Feed
@@ -1987,6 +2105,28 @@ export default function App() {
                   <span className="text-orange-400 font-bold text-xs sm:text-sm">🔥 {profile.streak}</span>
                   <span className="text-[10px] uppercase opacity-50 font-mono text-gray-400">Streak</span>
                 </div>
+                {profile.premiumExpiry && profile.premiumExpiry > appTimeNow && profile.premiumTier !== 'FREE' && (
+                  <>
+                    <div className="w-px h-4 bg-white/20"></div>
+                    <div 
+                      onClick={() => setCurrentPage("membership")}
+                      className="flex justify-center items-center gap-1 cursor-pointer bg-amber-500/10 px-2 md:px-3 py-1 rounded-full border border-amber-500/20 active:scale-95 transition-all"
+                      title="Active VIP Premium Period Remaining Time Tracker"
+                    >
+                      <span className="text-yellow-400 font-bold font-mono text-[11px] md:text-xs">
+                        👑 {(() => {
+                          const diff = profile.premiumExpiry - appTimeNow;
+                          if (diff <= 0) return "Expired";
+                          const days = Math.floor(diff / (24 * 60 * 60 * 1000));
+                          const hours = Math.floor((diff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+                          const mins = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000));
+                          const secs = Math.floor((diff % (60 * 1000)) / 1000);
+                          return days > 0 ? `${days}d ${hours}h` : `${hours}h ${mins}m ${secs}s`;
+                        })()}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="hidden md:flex items-center gap-3 pl-2 border-l border-white/10">
@@ -2130,6 +2270,7 @@ export default function App() {
             {/* 1. DASHBOARD CORE */}
             {currentPage === "home" && (
               <div className="space-y-6">
+                <AdBanner placement="home_top" premiumActive={profile.premiumTier !== "FREE"} />
                 {/* Hero Greeting Panel */}
                 <div className="neo-glass rounded-[32px] p-8 border-white/10 bg-gradient-to-r from-white/5 to-white/2 relative overflow-hidden">
                   <div className="absolute top-0 right-0 w-64 h-64 bg-electric-blue/5 blur-[80px] pointer-events-none"></div>
@@ -3403,6 +3544,8 @@ ${input} refers to a key academic paradigm where discrete variable states govern
                   </div>
                 </div>
 
+                <IntegrationTester profile={profile} onSaveProfile={saveProfile} onAddNotification={addNotification} />
+
                 {/* DANGEROUS AREA: ACCOUNTS ADMINISTRATOR & PURGE INTERACTIVE BLOCK */}
                 <div className="pt-6 border-t border-red-500/10 space-y-4">
                   <div className="flex items-center gap-2 text-red-500">
@@ -3764,18 +3907,32 @@ ${input} refers to a key academic paradigm where discrete variable states govern
                   return;
                 }
                 const updatedCoins = userCoins - pass.priceCoins;
-                const updatedProfile = { ...profile, coins: updatedCoins, premiumTier: pass.type as any };
+                
+                // Calculate dynamic countdown duration
+                let durationMs = 30 * 24 * 60 * 60 * 1000; // default Monthly
+                if (pass.id === 'daily') {
+                  durationMs = 24 * 60 * 60 * 1000;
+                } else if (pass.id === 'yearly') {
+                  durationMs = 365 * 24 * 60 * 60 * 1000;
+                }
+
+                const updatedProfile = { 
+                  ...profile, 
+                  coins: updatedCoins, 
+                  premiumTier: pass.type as any,
+                  premiumExpiry: Date.now() + durationMs
+                };
                 saveProfileWithParams(updatedProfile, userHp);
-                addNotification("VIP Calibrated Successfully", `Successfully loaded "${pass.name}" using NEXA nodes.`, "success");
+                addNotification("VIP Calibrated Successfully", `Successfully loaded "${pass.name}" using NEXA nodes. Timer initialized!`, "success");
                 
                 // Trigger the beautiful confirmation overlay with the coins animation
                 setCurrentClaim({
                   isOpen: true,
                   type: "PASS",
                   title: "PREMIUM ACTIVATED SUCCESSFUL 👑",
-                  subtitle: `Congratulations! Unlocked ${pass.name} Premium Pass.`,
+                  subtitle: `Congratulations! Unlocked ${pass.name} Premium Pass with a live timer.`,
                   amount: `-${pass.priceCoins.toLocaleString()} NEXA`,
-                  itemName: `${pass.name} Node Sync Active`,
+                  itemName: `${pass.name} Node Sync Active (${pass.id === 'daily' ? '24 Hours' : pass.id === 'yearly' ? '365 Days' : '30 Days'})`,
                   pendingCoins: 0,
                   pendingXp: 0,
                   pendingHp: 0
@@ -4417,6 +4574,21 @@ ${input} refers to a key academic paradigm where discrete variable states govern
                           <span className="text-gray-500 uppercase">Pro Tier</span>
                           <span className="font-bold text-cyan-400">{profile.premiumTier} MEMBER</span>
                         </div>
+                        {profile.premiumExpiry && profile.premiumExpiry > appTimeNow && (
+                          <div className="flex justify-between items-center bg-[#CCFF00]/5 p-2 px-2.5 rounded-xl border border-[#CCFF00]/10 mt-2">
+                            <span className="text-[#CCFF00] uppercase text-[9px] font-black">⏳ Active VIP Time Left</span>
+                            <span className="font-mono text-yellow-400 font-extrabold text-[10.5px]">
+                              {(() => {
+                                const diff = profile.premiumExpiry - appTimeNow;
+                                const days = Math.floor(diff / (24 * 60 * 60 * 1000));
+                                const hours = Math.floor((diff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+                                const mins = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000));
+                                const secs = Math.floor((diff % (60 * 1000)) / 1000);
+                                return days > 0 ? `${days}d ${hours}h ${mins}m` : `${hours}h ${mins}m ${secs}s`;
+                              })()}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -5270,7 +5442,18 @@ ${input} refers to a key academic paradigm where discrete variable states govern
                       setPaymentVerifyProgress(null);
                       setPaymentVerifyMsg("");
                       
-                      const updatedProfile = { ...profile, premiumTier: pTier as any };
+                      let checkoutDurationMs = 30 * 24 * 60 * 60 * 1000; // default Monthly
+                      if (checkoutModal.planName.toLowerCase().includes('daily') || checkoutModal.planName.toLowerCase().includes('flash')) {
+                        checkoutDurationMs = 24 * 60 * 60 * 1000;
+                      } else if (checkoutModal.planName.toLowerCase().includes('yearly') || checkoutModal.planName.toLowerCase().includes('champion')) {
+                        checkoutDurationMs = 365 * 24 * 60 * 60 * 1000;
+                      }
+
+                      const updatedProfile = { 
+                        ...profile, 
+                        premiumTier: pTier as any,
+                        premiumExpiry: Date.now() + checkoutDurationMs
+                      };
                       saveProfileWithParams(updatedProfile, userHp);
                       
                       // Trigger visual global claim portal overlay
@@ -5278,9 +5461,9 @@ ${input} refers to a key academic paradigm where discrete variable states govern
                         isOpen: true,
                         type: "PASS",
                         title: "👑 CORE VIP UNLOCKED!",
-                        subtitle: `Your secure payment of ${checkoutModal.price} was successfully verified through ledger nodes. Welcome to premium!`,
+                        subtitle: `Your secure payment of ${checkoutModal.price} was successfully verified through ledger nodes. Welcome to premium with a live timer!`,
                         amount: checkoutModal.planName,
-                        itemName: `SYNCHRONIZED ACTIVE STATUS Parameter: [${pTier}]`
+                        itemName: `SYNCHRONIZED ACTIVE STATUS Parameter: [${pTier}] (${checkoutModal.planName.toLowerCase().includes('daily') ? '24hr' : checkoutModal.planName.toLowerCase().includes('yearly') ? '365 Days' : '30 Days'})`
                       });
                       
                       addNotification("Payment Verified ✔", `Processed subscription for ${checkoutModal.planName}.`, "success");
@@ -6259,6 +6442,84 @@ ${input} refers to a key academic paradigm where discrete variable states govern
           </div>
         );
       })()}
+
+      {/* GLOBAL HIGH-FIDELITY SIMULATED ADMOB REWARDED VIDEO AD OVERLAY */}
+      {simulatedRewardAd && simulatedRewardAd.isOpen && (
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+          <div className="w-full max-w-sm bg-gradient-to-b from-[#120B24] via-[#090514] to-black border border-purple-500/35 rounded-[35px] overflow-hidden shadow-[0_0_60px_rgba(168,85,247,0.3)] text-center flex flex-col items-center p-8 select-none font-sans text-white relative">
+            <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-purple-500 via-pink-500 to-indigo-600 opacity-80" />
+            
+            <div className="flex justify-between items-center w-full mb-6">
+              <span className="text-[9px] uppercase font-mono text-purple-400 bg-purple-400/10 px-2.5 py-0.5 rounded border border-purple-400/20 font-black tracking-wide">
+                GOOGLE ADMOB VERIFIED TRANSMISSION
+              </span>
+              <span className="text-[10px] text-gray-500 font-mono font-bold">ca-app-pub-994/rev</span>
+            </div>
+
+            {/* Simulated Live Video Animation Player */}
+            <div className="w-full aspect-video bg-black/80 rounded-2xl border border-white/5 flex flex-col items-center justify-center gap-2.5 relative overflow-hidden mb-5">
+              <div className="absolute inset-0 bg-gradient-to-tr from-purple-500/15 via-transparent to-purple-500/5 animate-pulse" />
+              <div className="w-10 h-10 rounded-full bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </div>
+              <span className="text-[10px] font-mono text-purple-300 font-semibold uppercase tracking-wider animate-pulse">Streaming Advert Content...</span>
+            </div>
+
+            <h4 className="text-base font-black uppercase text-white leading-tight tracking-tight">
+              Sponsor Broadcast active
+            </h4>
+            <p className="text-xs text-slate-400 mt-2 text-center leading-relaxed font-sans px-2">
+              Please watch the video sequence to completion to verify academic interaction parameters and claim your coins reward.
+            </p>
+
+            <div className="mt-6 mb-6 p-4 bg-white/[0.02] border border-white/5 rounded-2xl w-full flex justify-between items-center font-mono">
+              <div className="text-left space-y-0.5">
+                <span className="text-[8px] text-gray-500 block uppercase font-bold">REMAINING TIME</span>
+                <span className="text-xl font-black text-[#CCFF00]">{simulatedRewardAd.timer} Seconds</span>
+              </div>
+              <div className="text-right space-y-0.5">
+                <span className="text-[8px] text-gray-500 block uppercase font-bold">LEDGER VERIFICATION</span>
+                <span className={`text-[10px] font-black uppercase tracking-wide px-2 py-0.5 rounded-md ${simulatedRewardAd.rewardClaimed ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25" : "bg-amber-500/15 text-amber-500 border border-amber-500/25 animate-pulse"}`}>
+                  {simulatedRewardAd.rewardClaimed ? "✓ VERIFIED" : "⏳ WATCHING"}
+                </span>
+              </div>
+            </div>
+
+            {!simulatedRewardAd.rewardClaimed ? (
+              <button 
+                disabled
+                className="w-full py-4 bg-white/5 text-gray-500 rounded-xl text-xs font-mono font-black border border-white/5 cursor-not-allowed select-none uppercase tracking-widest"
+              >
+                SKIP AD IN {simulatedRewardAd.timer}s
+              </button>
+            ) : (
+              <button 
+                onClick={() => {
+                  simulatedRewardAd.onReward();
+                  setSimulatedRewardAd(null);
+                }}
+                className="w-full py-4 bg-gradient-to-r from-[#CCFF00] to-green-500 hover:brightness-110 text-black font-extrabold rounded-xl text-xs uppercase cursor-pointer border-none shadow-[0_4px_20px_rgba(204,255,0,0.4)] tracking-widest transition-all hover:scale-102 active:scale-98 font-mono"
+              >
+                🎁 CLAIM +10 STUDY COINS NOW
+              </button>
+            )}
+            
+            <button
+              onClick={() => {
+                simulatedRewardAd.onDismiss();
+                setSimulatedRewardAd(null);
+                addNotification("Ad Suppressed", "Closed simulated reward ad early.", "info");
+              }}
+              className="mt-4 text-[10px] text-gray-500 hover:text-white font-mono uppercase underline border-none bg-transparent cursor-pointer"
+            >
+              Skip early & forfeit reward
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -52,6 +52,8 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
   const [loadingSessions, setLoadingSessions] = useState<boolean>(false);
   const [admobLogs, setAdmobLogs] = useState<AdLogEntry[]>([]);
   
+  const isTestMode = typeof window !== "undefined" ? !Capacitor.isNativePlatform() : true;
+  
   // Custom Gacha reward reveal modal state
   const [gachaReward, setGachaReward] = useState<{ name: string; emoji: string; desc: string } | null>(null);
 
@@ -170,24 +172,16 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
       return;
     }
 
-    // Web preview execution guard (No web simulations to guarantee zero invalid traffic)
-    if (Capacitor.isNativePlatform() === false) {
-      addNotification(
-        "NATIVE CONTAINER Bypassed 📱",
-        "Real Google AdMob ads work only inside native Android APK builds.",
-        "info"
-      );
-      return;
-    }
-
     try {
       addNotification(
         "CONNECTING AD SERVER 📡",
-        "Contacting Google Mobile Ads server for verified Rewarded Interstitial stream...",
+        Capacitor.isNativePlatform()
+          ? "Contacting Google Mobile Ads server for verified Rewarded Interstitial stream..."
+          : "Initializing premium browser-based AdMob reward stream simulation...",
         "info"
       );
 
-      // Trigger actual native view
+      // Trigger actual view (real AdMob SDK on Android, custom browser simulation on Web)
       const success = await admobService.showRewardedAd(
         (rewardedAmount) => {
           // Grant Reward ONLY on successful Google AdMob SDK callback trigger
@@ -459,29 +453,9 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
                   </div>
                 </div>
               </div>
-
-              {/* Cyber Sponsor Status Block */}
-              <div className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl space-y-2.5">
-                <div className="flex items-center gap-2 text-xs font-mono text-gray-300">
-                  <Shield className="w-4 h-4 text-cyan-400" />
-                  <span className="text-[10px] text-gray-400 uppercase">AdMob Unit ID Verification:</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono text-gray-500">
-                  <div className="bg-black/40 p-2.5 rounded-xl border border-white/5 space-y-0.5">
-                    <span className="text-[8px] text-cyan-400 uppercase">Unit Status</span>
-                    <p className="font-bold text-white uppercase">REWARDED INTERSTITIAL</p>
-                    <p className="text-[8px] tracking-tight truncate">...3879142624</p>
-                  </div>
-                  <div className="bg-black/40 p-2.5 rounded-xl border border-white/5 space-y-0.5">
-                    <span className="text-[8px] text-purple-400 uppercase">Invalid traffic safety</span>
-                    <p className="font-bold text-white uppercase">SHIELD ENGAGED</p>
-                    <p className="text-[8px] text-emerald-400">ANTI-SPAM ACTIVE</p>
-                  </div>
-                </div>
-              </div>
             </div>
 
-            {/* WATCH OR LOCK TRIGGER BUTTONS */}
+             {/* WATCH OR LOCK TRIGGER BUTTONS */}
             <div className="space-y-4 pt-4 z-10">
               {isOfflineDetected ? (
                 <button
@@ -493,27 +467,6 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
                     📶 Connect internet to load real rewards
                   </span>
                 </button>
-              ) : Capacitor.isNativePlatform() === false ? (
-                // Safe Browser Display Warning (Explicitly states native requirement without simulating fake ads)
-                <div className="space-y-3">
-                  <div className="bg-linear-to-r from-cyan-500/10 to-purple-500/10 p-5 rounded-2xl border border-white/5 text-center space-y-2">
-                    <AlertCircle className="w-6 h-6 text-cyan-400 mx-auto animate-pulse" />
-                    <h4 className="text-xs font-mono font-black text-white uppercase tracking-wider">Browser Sandbox Restricted</h4>
-                    <p className="text-[10px] text-gray-400 max-w-sm mx-auto leading-relaxed">
-                      "Real Google AdMob ads work only inside native Android APK builds."
-                    </p>
-                    <p className="text-[9px] text-gray-500 max-w-xs mx-auto">
-                      For testing purposes in a web view, simulation systems have been disabled to prevent Google Ads account traffic violations.
-                    </p>
-                  </div>
-                  
-                  <button
-                    disabled
-                    className="w-full py-4 rounded-2xl bg-white/5 text-gray-500 font-mono text-xs uppercase tracking-widest font-black border border-white/10 cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    <span>⚡ SYSTEM IN WEB PREVIEW</span>
-                  </button>
-                </div>
               ) : adsWatchedToday >= DAILY_MAX_ADS ? (
                 <button
                   disabled

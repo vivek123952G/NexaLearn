@@ -66,6 +66,17 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [cheers, setCheers] = useState<Record<string, MiniCheer[]>>({});
+  
+  // Real-time ticking state for premium timers
+  const [timeNow, setTimeNow] = useState<number>(Date.now());
+  const [selectedLBDuration, setSelectedLBDuration] = useState<"1day" | "1month" | "1year">("1month");
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTimeNow(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Dynamic state dictionary storing statuses for each student
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, { online: boolean; status: "online" | "offline" | "left"; lastSeenLabel: string }>>({});
@@ -363,6 +374,24 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({
                 <div className="inline-block px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono font-black uppercase tracking-wider">
                   👑 PREMIUM SEASON ACTIVE (VIP PRESTIGE)
                 </div>
+                
+                {profile?.premiumExpiry && profile.premiumExpiry > timeNow && (
+                  <div className="p-3 bg-indigo-950/30 rounded-xl border border-indigo-500/20 shadow-md flex items-center justify-between">
+                    <span className="text-[10px] font-mono text-indigo-300 uppercase font-bold">⏱️ Time Remaining:</span>
+                    <span className="text-xs font-mono font-bold text-yellow-400 font-bold animate-pulse">
+                      {(() => {
+                        const diff = profile.premiumExpiry - timeNow;
+                        if (diff <= 0) return "Expired";
+                        const days = Math.floor(diff / (24 * 60 * 60 * 1000));
+                        const hours = Math.floor((diff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+                        const mins = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000));
+                        const secs = Math.floor((diff % (60 * 1000)) / 1000);
+                        return days > 0 ? `${days}d ${hours}h ${mins}m ${secs}s` : `${hours}h ${mins}m ${secs}s`;
+                      })()}
+                    </span>
+                  </div>
+                )}
+
                 <p className="text-[11px] text-gray-400 font-mono leading-relaxed">
                   Excellent! You are an active VIP Premium Season Pass holder. Experience full visual bonuses across the cybercampus!
                 </p>
@@ -386,18 +415,67 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({
           </div>
 
           {profile?.premiumTier === "FREE" && (
-            <div className="pt-2">
+            <div className="pt-2 space-y-3">
+              {/* Duration picker selection container */}
+              <div className="grid grid-cols-3 gap-1.5 bg-black/40 p-1.5 rounded-xl border border-white/5">
+                <button
+                  type="button"
+                  onClick={() => setSelectedLBDuration("1day")}
+                  className={`py-1.5 px-1 text-[9px] uppercase font-mono font-bold rounded-lg cursor-pointer border-none transition-all ${
+                    selectedLBDuration === "1day" ? "bg-purple-500 text-white font-black" : "bg-white/5 hover:bg-white/10 text-gray-400"
+                  }`}
+                >
+                  ⚡ 1 Day (2.5K)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedLBDuration("1month")}
+                  className={`py-1.5 px-1 text-[9px] uppercase font-mono font-bold rounded-lg cursor-pointer border-none transition-all ${
+                    selectedLBDuration === "1month" ? "bg-purple-500 text-white font-black" : "bg-white/5 hover:bg-white/10 text-gray-400"
+                  }`}
+                >
+                  📅 1 Month (25K)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedLBDuration("1year")}
+                  className={`py-1.5 px-1 text-[9px] uppercase font-mono font-bold rounded-lg cursor-pointer border-none transition-all ${
+                    selectedLBDuration === "1year" ? "bg-purple-500 text-white font-black" : "bg-white/5 hover:bg-white/10 text-gray-400"
+                  }`}
+                >
+                  👑 1 Year (100K)
+                </button>
+              </div>
+
               <button
                 onClick={() => {
+                  const passCosts = {
+                    "1day": 2500,
+                    "1month": 25000,
+                    "1year": 100000
+                  };
+                  const passDurations = {
+                    "1day": 24 * 60 * 60 * 1000,
+                    "1month": 30 * 24 * 60 * 60 * 1000,
+                    "1year": 365 * 24 * 60 * 60 * 1000
+                  };
+
+                  const passCost = passCosts[selectedLBDuration];
+                  const durationMs = passDurations[selectedLBDuration];
+
                   if (onDeductCoins) {
-                    const ok = onDeductCoins(500);
+                    const ok = onDeductCoins(passCost);
                     if (ok) {
                       if (onSaveProfile) {
-                        onSaveProfile({ ...profile, premiumTier: "PREMIUM" });
-                        alert("🎉 CONGRATULATIONS! You have successfully purchased the Premium Season Pass! Enjoy 2x XP and all VIP active features!");
+                        onSaveProfile({ 
+                          ...profile, 
+                          premiumTier: "PREMIUM",
+                          premiumExpiry: Date.now() + durationMs
+                        });
+                        alert(`🎉 CONGRATULATIONS! You have successfully purchased the Premium Season Pass for ${selectedLBDuration}! Enjoy 2x XP and all VIP active features!`);
                       }
                     } else {
-                      alert("⚠️ Insufficient Balance! Premium Pass costs 500 Coins 🪙. Earn coins by getting your study reels viral or finishing courses!");
+                      alert(`⚠️ Insufficient Balance! Premium Pass for ${selectedLBDuration} costs ${passCost.toLocaleString()} Coins 🪙. Watch study reels, earn high course grades, or watch rewarded ads to earn the needed coins!`);
                     }
                   } else {
                     alert("⚠️ Integration sync loading... try again shortly.");
@@ -406,7 +484,9 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({
                 className="w-full py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 hover:brightness-110 active:scale-98 text-white font-extrabold text-[11px] rounded-xl font-mono uppercase cursor-pointer flex items-center justify-center gap-1 border-none shadow-[0_4px_15px_rgba(168,85,247,0.3)] transition-all"
               >
                 <span>🔥 UPGRADE TO PREMIUM SEASON PASS</span>
-                <span className="bg-black/25 text-[#CCFF00] text-[9.5px] px-1.5 py-0.5 rounded-md font-black">500 COINS 🪙</span>
+                <span className="bg-black/25 text-[#CCFF00] text-[9.5px] px-1.5 py-0.5 rounded-md font-black">
+                  {((selectedLBDuration === "1day" ? 2500 : selectedLBDuration === "1month" ? 25000 : 100000)).toLocaleString()} COINS 🪙
+                </span>
               </button>
             </div>
           )}

@@ -1,7 +1,9 @@
 import {
   AdMob,
   RewardAdPluginEvents,
+  InterstitialAdPluginEvents,
 } from '@capacitor-community/admob';
+import { Capacitor } from '@capacitor/core';
 
 // =========================
 // REAL ADMOB IDS (Production)
@@ -31,6 +33,16 @@ export interface AdLogEntry {
 class AdMobService {
   private lastRewardTime = 0;
   private logs: AdLogEntry[] = [];
+  
+  // Single Initialization Lock Pattern
+  private initPromise: Promise<void> | null = null;
+  private isInitialized = false;
+
+  // Preloading & Loaded Status Tracking
+  private isRewardedLoaded = false;
+  private isInterstitialLoaded = false;
+  private isPreloadingRewarded = false;
+  private isPreloadingInterstitial = false;
 
   constructor() {
     try {
@@ -59,20 +71,112 @@ class AdMobService {
     } catch (_) {}
   }
 
-  // =========================
-  // INITIALIZE ADMOB
-  // =========================
-  async initialize() {
+  // ===================================
+  // INITIALIZE ADMOB (ONCE & RUNS FIRST)
+  // ===================================
+  async initialize(): Promise<void> {
+    if (this.initPromise) {
+      return this.initPromise;
+    }
+
+    this.initPromise = (async () => {
+      try {
+        const isNative = Capacitor.isNativePlatform();
+        const isTestMode = !isNative; // Real ads on native platform, browser sandbox on dev previews
+
+        await AdMob.initialize({
+          initializeForTesting: isTestMode,
+        });
+
+        this.isInitialized = true;
+        console.log('✅ AdMob Initialized (Native=' + isNative + ', TestMode=' + isTestMode + ')');
+        this.log("INFO", "AdMob Engine Ready", `Ready to build streams. Test mode: ${isTestMode ? "ENABLED" : "DISABLED"}`);
+
+        // Kickoff background ad preloads so they are immediately available on screen open
+        if (isNative) {
+          this.preloadRewardedAd();
+          this.preloadInterstitialAd();
+        }
+      } catch (error) {
+        console.error('❌ AdMob Init Error:', error);
+        this.log("FAILED", "Initialization Failure", String(error));
+        // Reset promise to allow retrying initialization if it failed
+        this.initPromise = null;
+      }
+    })();
+
+    return this.initPromise;
+  }
+
+  // ===================================
+  // PRELOAD REWARDED VIDEO AD IN BG
+  // ===================================
+  async preloadRewardedAd(retryCount = 0): Promise<boolean> {
+    if (!Capacitor.isNativePlatform()) return false;
+    if (this.isPreloadingRewarded || this.isRewardedLoaded) return this.isRewardedLoaded;
+
+    this.isPreloadingRewarded = true;
     try {
-      const isTestMode = localStorage.getItem("nexa_admob_test_mode") === "true";
-      await AdMob.initialize({
-        initializeForTesting: isTestMode,
+      this.log("INFO", "Preloading Rewarded", "Loading production rewarded unit ID in background...");
+      
+      await AdMob.prepareRewardVideoAd({
+        adId: REWARDED_ID,
+        isTesting: false,
       });
-      console.log('✅ AdMob Initialized (TestMode=' + isTestMode + ')');
-      this.log("INFO", "AdMob Engine Ready", `Ready to build streams. Test mode: ${isTestMode ? "ENABLED" : "DISABLED"}`);
+
+      this.isRewardedLoaded = true;
+      this.log("SUCCESS", "Rewarded Preload Successful", "Production rewarded ad fully loaded and cached.");
+      return true;
     } catch (error) {
-      console.error('❌ AdMob Init Error:', error);
-      this.log("FAILED", "Initialization Failure", String(error));
+      this.isRewardedLoaded = false;
+      this.log("FAILED", "Rewarded Preload Failed", `Error: ${String(error)}. Retrying soon.`);
+      
+      // Retry handling: 15–30 seconds retry logic
+      if (retryCount < 5) {
+        const backoff = 15000 + Math.random() * 15000; // 15-30 seconds backoff
+        setTimeout(() => {
+          this.preloadRewardedAd(retryCount + 1);
+        }, backoff);
+      }
+      return false;
+    } finally {
+      this.isPreloadingRewarded = false;
+    }
+  }
+
+  // ===================================
+  // PRELOAD INTERSTITIAL AD IN BG
+  // ===================================
+  async preloadInterstitialAd(retryCount = 0): Promise<boolean> {
+    if (!Capacitor.isNativePlatform()) return false;
+    if (this.isPreloadingInterstitial || this.isInterstitialLoaded) return this.isInterstitialLoaded;
+
+    this.isPreloadingInterstitial = true;
+    try {
+      this.log("INFO", "Preloading Interstitial", "Loading production interstitial unit ID in background...");
+
+      await AdMob.prepareInterstitial({
+        adId: ADMOB_CONFIG.INTERSTITIAL_ID,
+        isTesting: false,
+      });
+
+      this.isInterstitialLoaded = true;
+      this.log("SUCCESS", "Interstitial Preload Successful", "Production Interstitial ad cached successfully.");
+      return true;
+    } catch (error) {
+      this.isInterstitialLoaded = false;
+      this.log("FAILED", "Interstitial Preload Failed", `Error: ${String(error)}. Retrying soon.`);
+
+      // Retry handling: 15–30 seconds retry logic
+      if (retryCount < 5) {
+        const backoff = 15000 + Math.random() * 15000;
+        setTimeout(() => {
+          this.preloadInterstitialAd(retryCount + 1);
+        }, backoff);
+      }
+      return false;
+    } finally {
+      this.isPreloadingInterstitial = false;
     }
   }
 
@@ -91,19 +195,24 @@ class AdMobService {
 
       this.lastRewardTime = now;
 
-      const isTestMode = localStorage.getItem("nexa_admob_test_mode") === "true";
-      // Official Google test ad units or real registered ones
+      const isNative = Capacitor.isNativePlatform();
+      const isTestMode = !isNative; 
+
+      // On Native, ALWAYS use the production real unit
       const targetAdId = isTestMode ? 'ca-app-pub-3940256099942544/5224354917' : REWARDED_ID;
 
       this.log("PENDING", "Ad Requested", `Loading unit ID: ${targetAdId} (TestMode: ${isTestMode})`);
 
-      // =========================
-      // PREPARE / CACHE AD
-      // =========================
-      await AdMob.prepareRewardVideoAd({
-        adId: targetAdId,
-        isTesting: isTestMode,
-      });
+      // Ensure SDK is active first
+      await this.initialize();
+
+      // If playing on native, try to prepare if not loaded
+      if (isNative && !this.isRewardedLoaded) {
+        await AdMob.prepareRewardVideoAd({
+          adId: targetAdId,
+          isTesting: isTestMode,
+        });
+      }
 
       this.log("INFO", "Ad Loaded", "Preparing to render video presentation to student node...");
 
@@ -127,6 +236,9 @@ class AdMobService {
           this.log("INFO", "Video Dismissed", "Ad closed. Event tracking cleanup finished.");
           rewardListener.remove();
           dismissListener.remove();
+          this.isRewardedLoaded = false;
+          // Reload interstitial right away in background as requested
+          this.preloadRewardedAd();
         }
       );
 
@@ -138,6 +250,8 @@ class AdMobService {
     } catch (error) {
       console.error('❌ Rewarded Ad Error:', error);
       this.log("FAILED", "Ad Stream Interrupted", String(error));
+      this.isRewardedLoaded = false;
+      this.preloadRewardedAd();
     }
   }
 
@@ -145,6 +259,25 @@ class AdMobService {
   // COMPATIBILITY SHIM METHODS FOR APP
   // ===================================
   async showRewardedAd(onRewardGranted: (amount: number) => void, onDismiss?: () => void): Promise<boolean> {
+    const isNative = Capacitor.isNativePlatform();
+    if (!isNative) {
+      this.log("INFO", "Simulated Ad Triggered", "Dispatching browser-based AdMob interactive video playback simulator.");
+      const customEvent = new CustomEvent("nexasnap_trigger_simulated_rewarded_ad", {
+        detail: {
+          onReward: () => {
+            this.log("SUCCESS", "Simulated Reward Dispatched", "User completed the simulated video loop (+10 NEXA)");
+            onRewardGranted(10);
+          },
+          onDismiss: () => {
+            this.log("INFO", "Simulated Ad Dismissed", "User exited simulated advertiser window.");
+            if (onDismiss) onDismiss();
+          }
+        }
+      });
+      window.dispatchEvent(customEvent);
+      return true;
+    }
+
     await this.showRewarded(() => {
       onRewardGranted(10);
       if (onDismiss) onDismiss();
@@ -153,9 +286,51 @@ class AdMobService {
   }
 
   async showInterstitialAd(): Promise<boolean> {
-    const isTestMode = localStorage.getItem("nexa_admob_test_mode") === "true";
-    this.log("INFO", "Interstitial Requested", `Suppressed as per active strategy (Rewarded ad priority). TestMode: ${isTestMode}`);
-    return true;
+    const isNative = Capacitor.isNativePlatform();
+    if (!isNative) {
+      this.log("INFO", "Simulated Interstitial Triggered", "Dispatching slide transition sponsor overlay simulator on browser.");
+      const customEvent = new CustomEvent("nexasnap_trigger_simulated_interstitial_ad", {
+        detail: {
+          onClosed: () => {
+            this.log("INFO", "Simulated Interstitial Closed", "Simulation card dismissed.");
+          }
+        }
+      });
+      window.dispatchEvent(customEvent);
+      return true;
+    }
+
+    try {
+      this.log("PENDING", "Interstitial Showing", "Preparing to show preloaded production Interstitial ad...");
+      
+      await this.initialize();
+
+      if (!this.isInterstitialLoaded) {
+        await AdMob.prepareInterstitial({
+          adId: ADMOB_CONFIG.INTERSTITIAL_ID,
+          isTesting: false,
+        });
+      }
+
+      const dismissListener = await AdMob.addListener(
+        InterstitialAdPluginEvents.Dismissed,
+        () => {
+          this.log("INFO", "Interstitial Dismissed", "Real ad segment finished. Reloading background queue.");
+          dismissListener.remove();
+          this.isInterstitialLoaded = false;
+          // Reload right after each display as requested!
+          this.preloadInterstitialAd();
+        }
+      );
+
+      await AdMob.showInterstitial();
+      return true;
+    } catch (err) {
+      console.error("❌ Interstitial Ad failure:", err);
+      this.log("FAILED", "Interstitial Interrupted", String(err));
+      this.preloadInterstitialAd();
+      return false;
+    }
   }
 
   async showAppOpenAd(): Promise<boolean> {
