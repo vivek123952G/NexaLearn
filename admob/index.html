@@ -1,78 +1,57 @@
-<!-- ========================= -->
-<!-- NEXALEARN REAL ADMOB SYSTEM -->
-<!-- ========================= -->
-
-<!-- ADMOB APP ID -->
-<!-- ca-app-pub-2996487725106736~5645483039 -->
-
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 
-<title>NexaLearn Ads System</title>
+<title>NexaLearn AI Ads</title>
 
 <style>
 
 body{
-background:#050816;
-font-family:Arial;
-color:white;
-margin:0;
-padding:20px;
-text-align:center;
+  margin:0;
+  padding:20px;
+  font-family:Arial, sans-serif;
+  background:#050816;
+  color:white;
+  text-align:center;
 }
 
 .title{
-font-size:32px;
-font-weight:bold;
-margin-top:40px;
-background:linear-gradient(90deg,#00f0ff,#8a2eff);
--webkit-background-clip:text;
--webkit-text-fill-color:transparent;
+  margin-top:40px;
+  font-size:34px;
+  font-weight:bold;
+  background:linear-gradient(90deg,#00e5ff,#7f00ff);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
 }
 
 .card{
-background:rgba(255,255,255,0.05);
-border:1px solid rgba(255,255,255,0.1);
-padding:25px;
-margin-top:30px;
-border-radius:25px;
-backdrop-filter:blur(20px);
+  margin-top:30px;
+  background:rgba(255,255,255,0.05);
+  border:1px solid rgba(255,255,255,0.1);
+  border-radius:24px;
+  padding:25px;
+  backdrop-filter:blur(20px);
 }
 
 button{
-width:100%;
-padding:18px;
-border:none;
-border-radius:20px;
-font-size:18px;
-font-weight:bold;
-margin-top:20px;
-cursor:pointer;
-color:white;
-background:linear-gradient(90deg,#00c6ff,#7f00ff);
-box-shadow:0 0 25px rgba(0,255,255,0.3);
-transition:0.3s;
+  width:100%;
+  margin-top:18px;
+  padding:18px;
+  border:none;
+  border-radius:18px;
+  font-size:17px;
+  font-weight:bold;
+  color:white;
+  cursor:pointer;
+  background:linear-gradient(90deg,#00c6ff,#7f00ff);
 }
 
-button:hover{
-transform:scale(1.03);
-}
-
-.nativeAd{
-margin-top:25px;
-padding:20px;
-border-radius:20px;
-background:rgba(255,255,255,0.04);
-border:1px solid rgba(255,255,255,0.08);
-}
-
-.loading{
-margin-top:20px;
-font-size:15px;
-opacity:0.7;
+.status{
+  margin-top:20px;
+  opacity:0.8;
+  font-size:15px;
 }
 
 </style>
@@ -86,183 +65,117 @@ NexaLearn AI
 
 <div class="card">
 
-<h2>⚡ Neural Reward System</h2>
+<h2>⚡ Reward System</h2>
 
-<p>
-Watch ads and earn 10 Nexa Coins
-</p>
+<p>Watch ads and earn Nexa Coins</p>
 
 <button onclick="showRewardAd()">
-🧠 Watch & Earn
+🎁 Watch Reward Ad
 </button>
 
 <button onclick="showInterstitialAd()">
-🚀 Continue Session
+🚀 Open Next Session
 </button>
 
-<div class="loading" id="status">
-Loading Ads...
+<div class="status" id="status">
+Initializing Ads...
 </div>
 
 </div>
 
-<!-- Native Ad -->
-<div class="nativeAd">
+<!-- Capacitor -->
+<script type="module">
 
-<h3>
-📚 Sponsored Learning
-</h3>
-
-<div id="native-ad-container">
-Loading sponsored content...
-</div>
-
-</div>
-
-<script>
-
-let rewardLoaded = false;
-let interstitialLoaded = false;
+import {
+  AdMob,
+  RewardAdPluginEvents,
+  InterstitialAdPluginEvents
+} from '@capacitor-community/admob';
 
 /* ========================= */
-/* START ADMOB */
+/* YOUR REAL ADMOB IDS */
 /* ========================= */
 
-document.addEventListener("deviceready", startAds, false);
+const REWARD_ID =
+'ca-app-pub-2996487725106736/3879142624';
 
-function startAds(){
-
-if(!window.admob){
-document.getElementById("status").innerHTML =
-"AdMob SDK Not Found";
-return;
-}
-
-admob.start();
+const INTERSTITIAL_ID =
+'ca-app-pub-2996487725106736/8251906012';
 
 /* ========================= */
-/* REWARDED INTERSTITIAL */
+/* INITIALIZE ADMOB */
 /* ========================= */
 
-admob.rewardvideo.config({
+async function startAdMob(){
 
-id: "ca-app-pub-2996487725106736/3879142624",
+  try{
 
-isTesting: false,
+    await AdMob.initialize({
+      requestTrackingAuthorization: false,
+      initializeForTesting: false
+    });
 
-autoShow: false
+    document.getElementById("status").innerHTML =
+    "✅ AdMob Initialized";
 
-});
+    loadRewardAd();
+    loadInterstitialAd();
 
-admob.rewardvideo.prepare();
+  }catch(err){
 
-/* ========================= */
-/* INTERSTITIAL */
-/* ========================= */
+    console.log(err);
 
-admob.interstitial.config({
+    document.getElementById("status").innerHTML =
+    "❌ AdMob Failed";
 
-id: "ca-app-pub-2996487725106736/8251906012",
-
-isTesting: false,
-
-autoShow: false
-
-});
-
-admob.interstitial.prepare();
-
-/* ========================= */
-/* NATIVE ADS */
-/* ========================= */
-
-admob.nativead.config({
-
-id: "ca-app-pub-2996487725106736/2904587862",
-
-isTesting: false,
-
-autoShow: true
-
-});
-
-admob.nativead.prepare();
-
-/* ========================= */
-/* EVENTS */
-/* ========================= */
-
-document.addEventListener(
-"admob.rewardvideo.load",
-function(){
-
-rewardLoaded = true;
-
-document.getElementById("status").innerHTML =
-"✅ Reward Ad Ready";
-
-}
-);
-
-document.addEventListener(
-"admob.rewardvideo.close",
-function(){
-
-rewardLoaded = false;
-
-admob.rewardvideo.prepare();
-
-}
-);
-
-document.addEventListener(
-"admob.rewardvideo.reward",
-function(){
-
-alert("🎉 You earned 10 Nexa!");
-
-}
-);
-
-document.addEventListener(
-"admob.interstitial.load",
-function(){
-
-interstitialLoaded = true;
-
-}
-);
-
-document.addEventListener(
-"admob.interstitial.close",
-function(){
-
-interstitialLoaded = false;
-
-admob.interstitial.prepare();
-
-}
-);
+  }
 
 }
 
-let lastInterstitial = 0;
-
 /* ========================= */
-/* SHOW REWARD */
+/* LOAD REWARD AD */
 /* ========================= */
 
-function showRewardAd(){
+async function loadRewardAd(){
 
-if(rewardLoaded){
+  await AdMob.prepareRewardVideoAd({
+    adId: REWARD_ID,
+    isTesting: false
+  });
 
-admob.rewardvideo.show();
-
-}else{
-
-alert("⚠️ Neural Reward ad is still caching. Please try again in a few seconds!");
+  document.getElementById("status").innerHTML =
+  "🎁 Reward Ad Ready";
 
 }
+
+/* ========================= */
+/* LOAD INTERSTITIAL */
+/* ========================= */
+
+async function loadInterstitialAd(){
+
+  await AdMob.prepareInterstitial({
+    adId: INTERSTITIAL_ID,
+    isTesting: false
+  });
+
+}
+
+/* ========================= */
+/* SHOW REWARD AD */
+/* ========================= */
+
+window.showRewardAd = async function(){
+
+  try{
+
+    await AdMob.showRewardVideoAd();
+
+  }catch(err){
+
+    alert("Reward ad not ready");
+
+  }
 
 }
 
@@ -270,28 +183,49 @@ alert("⚠️ Neural Reward ad is still caching. Please try again in a few secon
 /* SHOW INTERSTITIAL */
 /* ========================= */
 
-function showInterstitialAd(){
+window.showInterstitialAd = async function(){
 
-const now = Date.now();
-if(now - lastInterstitial < 600000){ // 10 minutes limit
-const secondsLeft = Math.round((600000 - (now - lastInterstitial)) / 1000);
-const minutesLeft = Math.ceil(secondsLeft / 60);
-alert("⏳ Cooldown Alert: Please wait " + minutesLeft + " min to continue another session to prevent invalid AdMob traffic.");
-return;
-}
+  try{
 
-if(interstitialLoaded){
+    await AdMob.showInterstitial();
 
-lastInterstitial = now;
-admob.interstitial.show();
+  }catch(err){
 
-}else{
+    alert("Interstitial ad not ready");
 
-alert("⚠️ Ads are currently premium or loading. Continuing session offline smoothly.");
+  }
 
 }
 
-}
+/* ========================= */
+/* EVENTS */
+/* ========================= */
+
+AdMob.addListener(
+  RewardAdPluginEvents.Rewarded,
+  () => {
+
+    alert("🎉 You earned Nexa Coins!");
+
+    loadRewardAd();
+
+  }
+);
+
+AdMob.addListener(
+  InterstitialAdPluginEvents.Dismissed,
+  () => {
+
+    loadInterstitialAd();
+
+  }
+);
+
+/* ========================= */
+/* START */
+/* ========================= */
+
+startAdMob();
 
 </script>
 

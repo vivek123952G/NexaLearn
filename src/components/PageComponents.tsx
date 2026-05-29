@@ -539,7 +539,13 @@ export const FocusMode: React.FC<FocusModeProps> = ({ onGrantRewards }) => {
 // ==========================================
 // 3. SMART PERFORMANCE ANALYTICS
 // ==========================================
-export const SmartAnalytics: React.FC = () => {
+interface SmartAnalyticsProps {
+  onDeductCoins?: (amount: number) => boolean;
+  profile?: any;
+}
+
+export const SmartAnalytics: React.FC<SmartAnalyticsProps> = ({ onDeductCoins, profile }) => {
+  const [isUnlocked, setIsUnlocked] = useState(false);
   const [comments, setComments] = useState<Array<{ id: string; username: string; avatar: string; text: string; time: string }>>([
     { id: "ac_1", username: "Dr. Evelyn Vance", avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Evy", text: "Excellent linear algebraic trend lines this week. Keep backing up the weights!", time: "2h ago" },
     { id: "ac_2", username: "AuraCoder_⚡", avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Aura", text: "Wow, 88% on algebra? Teach me the Olympiad hacks next session!", time: "5h ago" }
@@ -571,6 +577,56 @@ export const SmartAnalytics: React.FC = () => {
     setComments([...comments, createdComment]);
     setNewCommentText("");
   };
+
+  const handleUnlockChart = () => {
+    if (onDeductCoins) {
+      const success = onDeductCoins(5);
+      if (success) {
+        setIsUnlocked(true);
+      }
+    } else {
+      setIsUnlocked(true);
+    }
+  };
+
+  if (!isUnlocked) {
+    return (
+      <div className="neo-glass rounded-3xl p-8 border-white/5 bg-black/40 text-center space-y-6 relative overflow-hidden">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-10 pointer-events-none select-none text-[120px]">
+          📊
+        </div>
+        <div className="space-y-2 max-w-md mx-auto relative z-10">
+          <div className="w-16 h-16 bg-gradient-to-tr from-[#CCFF00] to-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-4 text-black text-2xl font-black shadow-[0_4px_20px_rgba(204,255,0,0.2)]">
+            📊
+          </div>
+          <h3 className="text-xl font-black text-white uppercase tracking-wider font-mono">Dynamic AI Strength Charts Locked</h3>
+          <p className="text-xs text-gray-400 leading-normal">
+            Analyze your algebraic, quantum bio and chemistry curriculum indexes. Generate dynamic interactive vector charts and AI suggestion packets.
+          </p>
+        </div>
+
+        {/* Locked Preview Cards */}
+        <div className="grid grid-cols-2 gap-3 max-w-sm mx-auto opacity-35 filter blur-[2px] pointer-events-none select-none">
+          <div className="bg-white/5 p-3 rounded-xl border border-white/5 text-left h-14" />
+          <div className="bg-white/5 p-3 rounded-xl border border-white/5 text-left h-14" />
+        </div>
+
+        <div className="max-w-sm mx-auto pt-2 relative z-10">
+          <button
+            onClick={handleUnlockChart}
+            className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-[#CCFF00] to-cyan-400 text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer shadow-[0_4px_15px_rgba(204,255,0,0.2)] hover:scale-102 active:scale-98 transition-all flex items-center justify-center gap-2 border-none"
+          >
+            <span>🔓 Unlock Performance Chart Report</span>
+            <span className="bg-black/15 px-2 py-0.5 rounded-md font-mono text-[10px] text-black font-black">5 COINS 🪙</span>
+          </button>
+          
+          <span className="text-[9px] text-gray-500 font-mono block mt-3 leading-normal uppercase">
+            *Standard platform fee (5 NEXA). Your current balance: {profile?.coins || 0} Coins
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="neo-glass rounded-3xl p-6 border-white/5 relative overflow-hidden">
@@ -653,7 +709,7 @@ export const SmartAnalytics: React.FC = () => {
 // ==========================================
 // 4. CAREER ROADMAP VIEW
 // ==========================================
-export const CareerRoadmapView: React.FC = () => {
+export const CareerRoadmapView: React.FC<{ onDeductCoins?: (amount: number) => boolean }> = ({ onDeductCoins }) => {
   const [careerChoice, setCareerChoice] = useState("Quantum AI Architect");
   const [loading, setLoading] = useState(false);
   const [activeNode, setActiveNode] = useState<number | null>(null);
@@ -670,6 +726,10 @@ export const CareerRoadmapView: React.FC = () => {
   const isGradeLevel = /\b(9|10|11|12)\b/i.test(careerChoice) || /grade/i.test(careerChoice);
 
   const triggerGenerate = async () => {
+    // Deduct standard 5 Coins fee for using AI Career Roadmap Gen
+    if (onDeductCoins && !onDeductCoins(5)) {
+      return;
+    }
     setLoading(true);
     setActiveNode(null);
     try {

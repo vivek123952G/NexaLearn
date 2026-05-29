@@ -32,6 +32,8 @@ import {
 import { NexaGramHub } from "./components/NexaGramHub";
 import { GrowthEngineHub } from "./components/GrowthEngineHub";
 import { WatchAndEarnConsole } from "./components/WatchAndEarnConsole";
+import { LanguageTutorView } from "./components/LanguageTutorView";
+import { TalkTeacherView } from "./components/TalkTeacherView";
 import { AnimatedLeaderboard } from "./components/AnimatedLeaderboard";
 import { admobService } from "./lib/AdMobService";
 
@@ -421,6 +423,7 @@ export default function App() {
   useEffect(() => {
     if (isOfflineMode) return;
 
+    let active = true;
     let unsubUsers: (() => void) | null = null;
     let unsubReels: (() => void) | null = null;
     let unsubPosts: (() => void) | null = null;
@@ -432,7 +435,10 @@ export default function App() {
       syncReelToFirestore,
       syncPostToFirestore
     }) => {
-      unsubUsers = subscribeToGlobalUsers((dbUsers) => {
+      if (!active) return;
+
+      const uUsers = subscribeToGlobalUsers((dbUsers) => {
+        if (!active) return;
         if (dbUsers && dbUsers.length > 0) {
           setAllUsers((prev) => {
             // Deduplicate lists, keeping dbUsers values as primary sources of truths
@@ -447,8 +453,14 @@ export default function App() {
           });
         }
       });
+      unsubUsers = uUsers;
+      if (!active) {
+        if (unsubUsers) { unsubUsers(); unsubUsers = null; }
+        return;
+      }
 
-      unsubReels = subscribeToGlobalReels((dbReels) => {
+      const uReels = subscribeToGlobalReels((dbReels) => {
+        if (!active) return;
         if (dbReels && dbReels.length > 0) {
           setReels(dbReels);
         } else {
@@ -468,8 +480,15 @@ export default function App() {
           });
         }
       });
+      unsubReels = uReels;
+      if (!active) {
+        if (unsubUsers) { unsubUsers(); unsubUsers = null; }
+        if (unsubReels) { unsubReels(); unsubReels = null; }
+        return;
+      }
 
-      unsubPosts = subscribeToGlobalPosts((dbPosts) => {
+      const uPosts = subscribeToGlobalPosts((dbPosts) => {
+        if (!active) return;
         if (dbPosts && dbPosts.length > 0) {
           setFeedPosts(dbPosts);
         } else {
@@ -479,11 +498,19 @@ export default function App() {
           });
         }
       });
+      unsubPosts = uPosts;
+      if (!active) {
+        if (unsubUsers) { unsubUsers(); unsubUsers = null; }
+        if (unsubReels) { unsubReels(); unsubReels = null; }
+        if (unsubPosts) { unsubPosts(); unsubPosts = null; }
+        return;
+      }
     }).catch(err => {
       console.warn("Live channels subscription lazy loader issue:", err);
     });
 
     return () => {
+      active = false;
       if (unsubUsers) unsubUsers();
       if (unsubReels) unsubReels();
       if (unsubPosts) unsubPosts();
@@ -591,6 +618,17 @@ export default function App() {
   // Keep old signature active for standard fallback references
   const saveProfile = (newProf: UserProfile) => {
     saveProfileWithParams(newProf);
+  };
+
+  const deductCoins = (amount: number): boolean => {
+    if ((profile.coins || 0) < amount) {
+      addNotification("Insufficient Coins 🪙", `Need ${amount} Coins for this action. Try doing a revision check or viewing a video tutorial!`, "alert");
+      return false;
+    }
+    const updated = { ...profile, coins: (profile.coins || 0) - amount };
+    saveProfile(updated);
+    addNotification("Coins Deducted 🪙", `Spent ${amount} Coins. Remaining balance: ${updated.coins} NEXA`, "info");
+    return true;
   };
 
   // Grant Rewards System (XP & Coins)
@@ -1391,6 +1429,12 @@ export default function App() {
   const triggerAISolve = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!solverInput.trim()) return;
+    
+    // Deduct standard 5 Coins fee for using AI Solver
+    if (!deductCoins(5)) {
+      return;
+    }
+
     setSolverLoading(true);
     setSolverResult(null);
 
@@ -1472,6 +1516,12 @@ export default function App() {
   // Custom AI exam prediction core
   const triggerExamPrediction = async () => {
     if (!examSubject.trim()) return;
+
+    // Deduct standard 5 Coins fee for using AI Exam Predictor
+    if (!deductCoins(5)) {
+      return;
+    }
+
     setExamLoading(true);
     setExamPredictResult(null);
     setExamResult("");
@@ -2037,6 +2087,8 @@ export default function App() {
                     { id: "notes_vault", name: "Cloud Notes Vault", mod: "NEXA" },
                     { id: "exam_predictor", name: "Exam Predictor", mod: "Academics" },
                     { id: "ai_mentor", name: "AI Mentor", mod: "Academics" },
+                    { id: "language_tutor", name: "AI Global Lang Tutor", mod: "Academics" },
+                    { id: "talk_teacher", name: "AI Talk Teacher Mode 🎤", mod: "Academics" },
                     { id: "growth_engineer", name: "Growth Architect Lab", mod: "Growth System" }
                   ].map((p) => (
                     <button
@@ -2486,6 +2538,7 @@ export default function App() {
                 studyGroups={studyGroups}
                 setStudyGroups={setStudyGroups}
                 onGrantRewards={grantRewards}
+                onDeductCoins={deductCoins}
                 onAddNotification={addNotification}
                 initialSubTab="chats"
               />
@@ -3073,6 +3126,7 @@ export default function App() {
                 studyGroups={studyGroups}
                 setStudyGroups={setStudyGroups}
                 onGrantRewards={grantRewards}
+                onDeductCoins={deductCoins}
                 onAddNotification={addNotification}
                 initialSubTab="feed"
               />
@@ -3083,6 +3137,8 @@ export default function App() {
               <AnimatedLeaderboard 
                 profile={profile}
                 allUsers={allUsers}
+                onSaveProfile={saveProfile}
+                onDeductCoins={deductCoins}
               />
             )}
 
@@ -3128,6 +3184,10 @@ export default function App() {
                     onClick={async () => {
                       const input = (document.getElementById("notes_topic_input") as HTMLInputElement)?.value;
                       if (!input) return;
+                      // Deduct standard 5 Coins fee for using AI Notes Generator
+                      if (!deductCoins(5)) {
+                        return;
+                      }
                       try {
                         const res = await fetch("/api/gemini/notes", {
                           method: "POST",
@@ -3194,7 +3254,7 @@ ${input} refers to a key academic paradigm where discrete variable states govern
                   <h3 className="text-2xl font-black text-white">Career Horizon Planner</h3>
                   <p className="text-xs text-gray-400 mt-1">Interactive roadmap nodes designed for futuristic technology segments</p>
                 </div>
-                <CareerRoadmapView />
+                <CareerRoadmapView onDeductCoins={deductCoins} />
               </div>
             )}
 
@@ -3221,6 +3281,7 @@ ${input} refers to a key academic paradigm where discrete variable states govern
                 studyGroups={studyGroups}
                 setStudyGroups={setStudyGroups}
                 onGrantRewards={grantRewards}
+                onDeductCoins={deductCoins}
                 onAddNotification={addNotification}
                 initialSubTab="reels"
               />
@@ -3472,13 +3533,181 @@ ${input} refers to a key academic paradigm where discrete variable states govern
                   </div>
                 </div>
 
-                <div className="flex gap-3 justify-end mt-6">
+                <div className="pt-6 border-t border-white/5 flex flex-wrap gap-4 justify-between items-center text-xs">
+                  <div className="flex gap-4">
+                    <button 
+                      type="button"
+                      onClick={() => setCurrentPage("privacy_policy")}
+                      className="text-gray-400 hover:text-[#CCFF00] transition-colors cursor-pointer font-bold inline-flex items-center gap-1"
+                    >
+                      🛡️ Privacy Policy
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setCurrentPage("terms_conditions")}
+                      className="text-gray-400 hover:text-[#CCFF00] transition-colors cursor-pointer font-bold inline-flex items-center gap-1"
+                    >
+                      ⚖️ Terms & Conditions
+                    </button>
+                  </div>
                   <button 
+                    type="button"
                     onClick={handleLogout}
-                    className="py-2.5 px-5 bg-red-600/10 text-red-300 font-bold rounded-xl text-xs hover:bg-red-600/30 hover:text-white transition-all border border-red-500/20 uppercase cursor-pointer"
+                    className="py-2 px-4 bg-red-600/10 text-red-300 font-bold rounded-xl text-[10px] hover:bg-red-600/30 hover:text-white transition-all border border-red-500/20 uppercase cursor-pointer"
                   >
                     RESET SYSTEM CODES (LOGOUT)
                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* PRIVACY POLICY PAGE */}
+            {currentPage === "privacy_policy" && (
+              <div className="max-w-2xl mx-auto neo-glass rounded-3xl p-6 md:p-8 border border-white/5 space-y-6 animate-fade-in text-left">
+                <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                  <div>
+                    <h3 className="text-xl md:text-2xl font-black text-white">Privacy Policy</h3>
+                    <p className="text-xs text-gray-400 font-mono mt-1">LAST UPDATED: MAY 28, 2026</p>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => setCurrentPage("settings")}
+                    className="py-1.5 px-4 bg-white/5 hover:bg-white/10 text-gray-300 font-bold rounded-xl text-xs uppercase cursor-pointer border border-white/5 font-mono"
+                  >
+                    Back to Settings
+                  </button>
+                </div>
+
+                <div className="space-y-4 text-xs md:text-sm text-gray-300 leading-relaxed font-sans max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                  <p className="font-semibold text-white">Welcome to NexaLearn.</p>
+                  <p>
+                    NexaLearn is an AI-powered educational platform designed to help students learn smarter using advanced study tools, AI assistance, PDF exports, quizzes, and reward systems. We value your privacy and aim to keep information simple and transparent.
+                  </p>
+
+                  <h4 className="text-[#CCFF00] font-bold font-mono text-xs uppercase mt-4">1. Information We Collect</h4>
+                  <ul className="list-disc pl-5 space-y-2">
+                    <li>Name and email address during authentication.</li>
+                    <li>User-generated study content and cards.</li>
+                    <li>Device and app usage analytics for performance tuning.</li>
+                    <li>Reward/ad interaction events and logs.</li>
+                    <li>Firebase authentication identifiers.</li>
+                    <li>Crash and performance diagnostics.</li>
+                  </ul>
+
+                  <h4 className="text-[#CCFF00] font-bold font-mono text-xs uppercase mt-4">2. Advertising & Monetization</h4>
+                  <p>
+                    NexaLearn uses Google AdMob to display advertisements, including rewarded advertisements. Google AdMob may collect technical device identifiers, advertising IDs, IP addresses, and app interaction metrics to deliver relevant impressions. These ads help support and maintain our platform features.
+                  </p>
+                  <p>
+                    Learn more: <a href="https://policies.google.com/technologies/ads" target="_blank" rel="noopener noreferrer" className="text-cyan-400 underline font-semibold">Google Advertising Privacy & Policy</a>
+                  </p>
+
+                  <h4 className="text-[#CCFF00] font-bold font-mono text-xs uppercase mt-4">3. Firebase Services</h4>
+                  <p>
+                    NexaLearn uses Firebase services including Firebase Authentication, Firestore Database, Firebase Hosting, and Firebase Analytics metrics to ensure consistent operation, accounts security, and data syncing.
+                  </p>
+                  <p>
+                    Learn more: <a href="https://firebase.google.com/support/privacy" target="_blank" rel="noopener noreferrer" className="text-cyan-400 underline font-semibold">Firebase Security & Privacy Guidance</a>
+                  </p>
+
+                  <h4 className="text-[#CCFF00] font-bold font-mono text-xs uppercase mt-4">4. Data Security</h4>
+                  <p>
+                    We implement reasonable technical and organizational safeguards to protect user information. However, no internet-based platform can guarantee absolute security.
+                  </p>
+
+                  <h4 className="text-[#CCFF00] font-bold font-mono text-xs uppercase mt-4">5. Children's Privacy</h4>
+                  <p>
+                    NexaLearn is intended for educational purposes. Users under the age required by local law should use the application under parental or guardian supervision.
+                  </p>
+
+                  <h4 className="text-[#CCFF00] font-bold font-mono text-xs uppercase mt-4">6. Third-Party Services</h4>
+                  <p>
+                    The application integrates Google AdMob, Google Firebase, and Google AI Services. These providers operate under their own independent privacy policies.
+                  </p>
+
+                  <h4 className="text-[#CCFF00] font-bold font-mono text-xs uppercase mt-4">7. User Rights</h4>
+                  <p>
+                    Users may request account deletion, removal of stored information, and data access requests at any time. You can purge your account node inside the Settings screen to instantly clear all data from our local & cloud store.
+                  </p>
+
+                  <h4 className="text-[#CCFF00] font-bold font-mono text-xs uppercase mt-4">8. Contact</h4>
+                  <p>
+                    For support, privacy concerns, or data requests:
+                    <br />
+                    <span className="font-bold font-mono text-white mt-1 block">Email: support@nexalearn.app</span>
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* TERMS & CONDITIONS PAGE */}
+            {currentPage === "terms_conditions" && (
+              <div className="max-w-2xl mx-auto neo-glass rounded-3xl p-6 md:p-8 border border-white/5 space-y-6 animate-fade-in text-left">
+                <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                  <div>
+                    <h3 className="text-xl md:text-2xl font-black text-white">Terms & Conditions</h3>
+                    <p className="text-xs text-gray-400 font-mono mt-1">LAST UPDATED: MAY 28, 2026</p>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => setCurrentPage("settings")}
+                    className="py-1.5 px-4 bg-white/5 hover:bg-white/10 text-gray-300 font-bold rounded-xl text-xs uppercase cursor-pointer border border-white/5 font-mono"
+                  >
+                    Back to Settings
+                  </button>
+                </div>
+
+                <div className="space-y-4 text-xs md:text-sm text-gray-300 leading-relaxed font-sans max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                  <p className="font-semibold text-white">By using NexaLearn, you agree to the following terms.</p>
+
+                  <h4 className="text-[#CCFF00] font-bold font-mono text-xs uppercase mt-4">1. Acceptance of Terms</h4>
+                  <p>
+                    NexaLearn provides AI-powered educational tools, study systems, quizzes, productivity utilities, and learning resources. Using any part of the application means you fully accept these Terms & Conditions.
+                  </p>
+
+                  <h4 className="text-[#CCFF00] font-bold font-mono text-xs uppercase mt-4">2. User Responsibilities</h4>
+                  <p>
+                    Users agree not to:
+                  </p>
+                  <ul className="list-disc pl-5 space-y-2">
+                    <li>Abuse or exploit any feature on the platform.</li>
+                    <li>Attempt unauthorized access or bypass authentication layers.</li>
+                    <li>Use bots, macro executors, or automated abuse systems.</li>
+                    <li>Manipulate coin rewards, points, or advertisements.</li>
+                    <li>Upload illegal, offensive, or harmful content to public forums and chats.</li>
+                  </ul>
+
+                  <h4 className="text-[#CCFF00] font-bold font-mono text-xs uppercase mt-4">3. Rewarded Ads & Coins</h4>
+                  <p>
+                    Some premium features (such as AI Solves, study material generation, hints, and PDF exports) may require users to voluntarily watch rewarded advertisements. Rewards are granted only after successful ad completion events. NexaLearn does not guarantee continuous ad availability or delivery.
+                  </p>
+
+                  <h4 className="text-[#CCFF00] font-bold font-mono text-xs uppercase mt-4">4. Intellectual Property</h4>
+                  <p>
+                    All branding, UI systems, features, design layouts, and platform assets associated with NexaLearn remain protected intellectual property unless otherwise explicitly stated.
+                  </p>
+
+                  <h4 className="text-[#CCFF00] font-bold font-mono text-xs uppercase mt-4">5. Service Availability & Performance</h4>
+                  <p>
+                    NexaLearn is provided on an "as is" and "as available" basis without warranties of uninterrupted availability or error-free operation. We may update, modify, suspend, or discontinue portions of the service at any time without prior notice.
+                  </p>
+
+                  <h4 className="text-[#CCFF00] font-bold font-mono text-xs uppercase mt-4">6. Account Access</h4>
+                  <p>
+                    Users are solely responsible for maintaining the security of their own accounts, passwords, and devices.
+                  </p>
+
+                  <h4 className="text-[#CCFF00] font-bold font-mono text-xs uppercase mt-4">7. Termination of Accounts</h4>
+                  <p>
+                    Accounts and node credentials violating platform rules, cheating reward spinners, or abusing public fees may be permanently suspended or removed without liability.
+                  </p>
+
+                  <h4 className="text-[#CCFF00] font-bold font-mono text-xs uppercase mt-4">8. Contact Us</h4>
+                  <p>
+                    If you have questions regarding these terms:
+                    <br />
+                    <span className="font-bold font-mono text-white mt-1 block">Email: support@nexalearn.app</span>
+                  </p>
                 </div>
               </div>
             )}
@@ -3670,7 +3899,7 @@ ${input} refers to a key academic paradigm where discrete variable states govern
             {/* 20. SMART NUMERICAL ANALYTICS (Weak topics charts) */}
             {currentPage === "analytics" && (
               <div className="max-w-4xl mx-auto space-y-6">
-                <SmartAnalytics />
+                <SmartAnalytics onDeductCoins={deductCoins} profile={profile} />
               </div>
             )}
 
@@ -3714,6 +3943,10 @@ ${input} refers to a key academic paradigm where discrete variable states govern
                   onClick={() => {
                     if (!scannerFile) {
                       alert("Please attach a mathematical snapshot first.");
+                      return;
+                    }
+                    // Deduct standard 5 Coins fee for using AI Laser Scanner
+                    if (!deductCoins(5)) {
                       return;
                     }
                     setCurrentPage("ai_solver");
@@ -4025,6 +4258,26 @@ ${input} refers to a key academic paradigm where discrete variable states govern
                   ))}
                 </div>
               </div>
+            )}
+
+            {currentPage === "language_tutor" && (
+              <LanguageTutorView
+                profile={profile}
+                onGrantRewards={grantRewards}
+                onDeductCoins={deductCoins}
+                onAddNotification={addNotification}
+                onClose={() => setCurrentPage("home")}
+              />
+            )}
+
+            {currentPage === "talk_teacher" && (
+              <TalkTeacherView
+                profile={profile}
+                onGrantRewards={grantRewards}
+                onDeductCoins={deductCoins}
+                onAddNotification={addNotification}
+                onClose={() => setCurrentPage("home")}
+              />
             )}
 
             {/* 24. HYPER-ADVANCED GROW & SHIELD NODE */}
@@ -4625,7 +4878,7 @@ ${input} refers to a key academic paradigm where discrete variable states govern
             })()}
 
             {/* 24. ALL THE REMAINING PAGES DECLARED FALLBACK/SHELL WITH POLISHED MARKUP FOR HIGHEST FIDELITY */}
-            {!["home", "question_bank", "ai_solver", "chats", "study_groups", "community_feed", "rankings", "study_battle", "focus_mode", "notes_generator", "career_roadmap", "virtual_campus", "study_reels", "theme_store", "avatar_studio", "reward_vault", "settings", "membership", "analytics", "hw_scanner", "exam_predictor", "ai_mentor", "profile", "notes_vault", "marketplace", "achievement_vault", "notifications_hub", "coin_shop", "token_store", "creator_studio", "tournaments", "watch_to_earn"].includes(currentPage) && (
+            {!["home", "question_bank", "ai_solver", "chats", "study_groups", "community_feed", "rankings", "study_battle", "focus_mode", "notes_generator", "career_roadmap", "virtual_campus", "study_reels", "theme_store", "avatar_studio", "reward_vault", "settings", "membership", "analytics", "hw_scanner", "exam_predictor", "ai_mentor", "language_tutor", "talk_teacher", "profile", "notes_vault", "marketplace", "achievement_vault", "notifications_hub", "coin_shop", "token_store", "creator_studio", "tournaments", "watch_to_earn"].includes(currentPage) && (
               <div className="neo-glass rounded-[35px] p-8 border-white/5 text-center max-w-md mx-auto space-y-6">
                 <div className="w-12 h-12 bg-indigo-500/10 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto border border-indigo-500/15">
                   <Compass className="animate-spin" />

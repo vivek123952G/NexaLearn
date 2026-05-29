@@ -2,8 +2,6 @@ import { initializeApp, getApp, getApps } from "firebase/app";
 import { 
   initializeFirestore,
   getFirestore,
-  persistentLocalCache,
-  persistentSingleTabManager,
   doc, 
   getDoc, 
   setDoc, 
@@ -14,8 +12,7 @@ import {
   orderBy,
   onSnapshot,
   getDocFromServer,
-  disableNetwork,
-  enableNetwork
+  deleteDoc
 } from "firebase/firestore";
 import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 export { GoogleAuthProvider, signInWithPopup };
@@ -31,12 +28,8 @@ const app = getApps().length === 0 ? initializeApp(actualConfig) : getApp();
 const isNative = Capacitor.isNativePlatform();
 
 // Initialize Firestore with robust connection protocols to completely prevent timeouts in restricted environments:
-// 1. Force HTTP Long Polling instead of standard WebSockets/WebChannel which are often blocked.
-// 2. Enable modern persistentLocalCache with persistentSingleTabManager to avoid multi-iframe/tab collision errors.
+// Force HTTP Long Polling instead of standard WebSockets/WebChannel which are often blocked in iframe sandboxes.
 const firestoreSettings = {
-  localCache: persistentLocalCache({
-    tabManager: persistentSingleTabManager({})
-  }),
   experimentalForceLongPolling: true
 };
 
@@ -51,15 +44,11 @@ if (globalTemp._firestoreDb) {
       ? initializeFirestore(app, firestoreSettings, actualConfig.firestoreDatabaseId)
       : initializeFirestore(app, firestoreSettings);
   } catch (err) {
-    console.warn("⚠️ Failed to initialize Firestore with advanced settings. Retrying with basic settings...", err);
+    console.warn("⚠️ Failed to initialize Firestore with settings. Defaulting...", err);
     try {
-      const fallbackSettings = { experimentalForceLongPolling: true };
-      dbInstance = actualConfig.firestoreDatabaseId 
-        ? initializeFirestore(app, fallbackSettings, actualConfig.firestoreDatabaseId)
-        : initializeFirestore(app, fallbackSettings);
-    } catch (err2) {
-      console.warn("⚠️ Fallback Firestore initialization failed. Defaulting to getFirestore(app)...", err2);
       dbInstance = getFirestore(app);
+    } catch (err2) {
+      console.error("⚠️ Emergency Firestore fallback failed:", err2);
     }
   }
   globalTemp._firestoreDb = dbInstance;
@@ -96,19 +85,10 @@ export async function auditFirestoreConnection(): Promise<boolean> {
     await withTimeout(getDocFromServer(testDocRef), 4500, "Firestore database ping");
     console.log("📶 Firestore connection test successful! Cloud synchronization is fully operational.");
     localStorage.setItem("nexa_firestore_connected", "true");
-    try {
-      await enableNetwork(db);
-    } catch (_) {}
     return true;
   } catch (err) {
-    console.warn("⚠️ Firestore connection test timeout/failure - switching to absolute offline Mode:", err);
+    console.warn("⚠️ Firestore connection test timeout/failure - switching local cache mode:", err);
     localStorage.setItem("nexa_firestore_connected", "false");
-    try {
-      await disableNetwork(db);
-      console.log("🔌 Firestore network traffic disabled automatically to completely prevent 10-second timeout warnings.");
-    } catch (netErr) {
-      console.warn("Could not disable Firestore network:", netErr);
-    }
     return false;
   }
 }
@@ -408,7 +388,6 @@ export async function deleteUserProfileByAdmin(username: string): Promise<boolea
   const cleanedUsername = username.toLowerCase().trim();
   const path = `users/${cleanedUsername}`;
   try {
-    const { deleteDoc, doc } = await import("firebase/firestore");
     await withTimeout(
       deleteDoc(doc(db, "users", cleanedUsername)),
       6000,

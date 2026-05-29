@@ -3,14 +3,17 @@ import {
   Heart, MessageSquare, Share2, ThumbsDown, Send, Plus, Users, 
   Search, Bookmark, Shield, Compass, Sparkles, Check, Play, HelpCircle, 
   ChevronRight, RefreshCw, X, MessageCircle, Info, Smile, ChevronDown, UserPlus, Flame, Award,
-  BookOpen, Star, Clock, Activity, Sword, Brain, ShieldAlert, MonitorCheck, RefreshCcw, Music, Pause
+  BookOpen, Star, Clock, Activity, Sword, Brain, ShieldAlert, MonitorCheck, RefreshCcw, Music, Pause,
+  Mic, Gift
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   UserProfile, FeedPost, ChatSession, StudyReel, StudyGroup, Comment, ChatMessage 
 } from "../types";
-import { syncReelToFirestore, syncPostToFirestore } from "../lib/firebase";
+import { syncReelToFirestore, syncPostToFirestore, db } from "../lib/firebase";
+import { doc, setDoc } from "firebase/firestore";
 import { NativeAd } from "./NativeAds";
+import { playMicRecordStart, playSuccessChime, playInterfaceClick } from "../lib/audioEffects";
 
 interface InteractiveReelPlayerProps {
   reel: StudyReel;
@@ -163,6 +166,7 @@ interface NexaGramHubProps {
   studyGroups: StudyGroup[];
   setStudyGroups: React.Dispatch<React.SetStateAction<StudyGroup[]>>;
   onGrantRewards: (xp: number, coins: number, hp?: number) => void;
+  onDeductCoins?: (amount: number) => boolean;
   onAddNotification: (title: string, msg: string, type: 'info' | 'success' | 'alert' | 'friend_request') => void;
   initialSubTab?: 'feed' | 'reels' | 'chats' | 'friends' | 'explore' | 'profile';
 }
@@ -181,10 +185,12 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
   studyGroups,
   setStudyGroups,
   onGrantRewards,
+  onDeductCoins,
   onAddNotification,
   initialSubTab = "feed"
 }) => {
   const [subTab, setSubTab] = useState<'feed' | 'reels' | 'explore' | 'profile' | 'chats' | 'friends'>(initialSubTab as any);
+  const [viralReels, setViralReels] = useState<string[]>([]);
   
   // Local Media file selection uploaders
   const handleReelVideoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -256,6 +262,174 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
   
   const [activeDmIdx, setActiveDmIdx] = useState(0);
   const [dmInput, setDmInput] = useState("");
+  
+  // Simulated voice message recording state machines
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [recordDuration, setRecordDuration] = useState(0);
+  const recordIntervalRef = useRef<any>(null);
+
+  // Active voice playback state (holds ID of currently "playing" speech clip)
+  const [playingVoiceMsgId, setPlayingVoiceMsgId] = useState<string | null>(null);
+
+  // Send gift interaction states
+  const [showGiftModal, setShowGiftModal] = useState(false);
+
+  // Available study gift presets
+  const studyGifts = [
+    { name: "Coffee Cup", emoji: "☕", cost: 5, xp: 10, bonus: "+10% Study Focus boost" },
+    { name: "Math Compass", emoji: "📐", cost: 15, xp: 30, bonus: "+15% Formula Velocity" },
+    { name: "Microscope", emoji: "🔬", cost: 50, xp: 100, bonus: "+20% Exam Predictor precision" },
+    { name: "Nexa Medal", emoji: "🏅", cost: 100, xp: 250, bonus: "Unlocks Legend League Entry" },
+    { name: "Olympiad Trophy", emoji: "🏆", cost: 200, xp: 500, bonus: "Unlocks Golden Profile Shimmer" }
+  ];
+
+  // Initiate voice message recording sequence
+  const startVoiceRecording = () => {
+    try {
+      playMicRecordStart();
+    } catch (e) {}
+    setIsRecordingVoice(true);
+    setRecordDuration(0);
+    recordIntervalRef.current = setInterval(() => {
+      setRecordDuration(prev => prev + 1);
+    }, 1000);
+    onAddNotification(
+      "Voice Recorder Active 🎤",
+      "Recording audio query vector signals... Click Stop to transmit.",
+      "info"
+    );
+  };
+
+  // Halt recording and append a visual audio voice message bubble
+  const stopVoiceRecordingAndSend = () => {
+    try {
+      playSuccessChime();
+    } catch (e) {}
+    if (recordIntervalRef.current) {
+      clearInterval(recordIntervalRef.current);
+      recordIntervalRef.current = null;
+    }
+    setIsRecordingVoice(false);
+    
+    // Fallback safe duration
+    const duration = recordDuration > 0 ? recordDuration : 5;
+    const voiceText = `🎤 [Voice Message 0:0${duration}s]`;
+
+    const activeSession = chats[activeDmIdx];
+    if (!activeSession) return;
+
+    const newMessage: ChatMessage = {
+      id: `m_voice_${Date.now()}`,
+      sender: "You",
+      avatar: profile.avatar,
+      text: voiceText,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      reactions: {}
+    };
+
+    const updatedMessages = [...activeSession.messages, newMessage];
+    const updatedSessions = chats.map((s, idx) => {
+      if (idx === activeDmIdx) {
+        return { ...s, messages: updatedMessages };
+      }
+      return s;
+    });
+
+    setChats(updatedSessions);
+    setRecordDuration(0);
+    onAddNotification("Voice Doubt Dispatched 🎤", `Transmitted high fidelity audio packet (${duration}s).`, "success");
+
+    // Spawn an automated, context-aware AI or friend response automatically to close the flow loop
+    setTimeout(() => {
+      const responseMessage: ChatMessage = {
+        id: `m_voice_reply_${Date.now()}`,
+        sender: activeSession.recipientName,
+        avatar: activeSession.recipientAvatar,
+        text: `🔊 Decrypted custom Voice Message successfully: "How do we simplify the chemical kinetics equations before solver compilation?"\n\n💡 Response: We assume steady-state approximation and eliminate intermediates. I've updated kinetic models in our study channel whiteboard!`,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        reactions: { "👍": 1 }
+      };
+
+      setChats(prev => prev.map((s, idx) => {
+        if (idx === activeDmIdx) {
+          return { ...s, messages: [...s.messages, responseMessage] };
+        }
+        return s;
+      }));
+    }, 1500);
+  };
+
+  // Dispatch a profile-enhancing academic gift with a coin-deduct fee checkpoint
+  const handleSendGift = (gift: { name: string; emoji: string; cost: number; xp: number; bonus: string }) => {
+    const activeSession = chats[activeDmIdx];
+    if (!activeSession) return;
+
+    // Coins are deducted directly using onDeductCoins hook!
+    if (onDeductCoins && !onDeductCoins(gift.cost)) {
+      setShowGiftModal(false);
+      return;
+    }
+
+    try {
+      playSuccessChime();
+    } catch (e) {}
+
+    const giftText = `🎁 Sent Gift: ${gift.emoji} ${gift.name} (${gift.cost} NEXA coins) - ${gift.bonus}!`;
+
+    const newMessage: ChatMessage = {
+      id: `m_gift_${Date.now()}`,
+      sender: "You",
+      avatar: profile.avatar,
+      text: giftText,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      reactions: {}
+    };
+
+    const updatedMessages = [...activeSession.messages, newMessage];
+    const updatedSessions = chats.map((s, idx) => {
+      if (idx === activeDmIdx) {
+        return { ...s, messages: updatedMessages };
+      }
+      return s;
+    });
+
+    setChats(updatedSessions);
+    setShowGiftModal(false);
+    onAddNotification(
+      "Academic Gift Transmitted 🎁",
+      `Gratefully sent ${gift.name} to @${activeSession.recipientName}! Granted +${gift.xp} XP nodes.`,
+      "success"
+    );
+
+    // Yield reward XP to sender for their community support!
+    onGrantRewards(gift.xp, 0);
+
+    // Friend responds with deep gratitude
+    setTimeout(() => {
+      const compliments = [
+        `OMG! Thank you for the awesome ${gift.name} ${gift.emoji}! 😭💖 This completely energizes my study streak coefficient! Let's conquer the ranks!`,
+        `Direct peer-to-peer telemetry boost received! This ${gift.emoji} ${gift.name} is magnificent. I appreciate your high-value coordination standard.`,
+        `Absolute legendary teammate behavior! Thanks for the ${gift.emoji} ${gift.name}. Let's crack this week's AI exam challenges together! 🎉`
+      ];
+      const randomComp = compliments[Math.floor(Math.random() * compliments.length)];
+
+      const gratitudeMessage: ChatMessage = {
+        id: `m_gift_reply_${Date.now()}`,
+        sender: activeSession.recipientName,
+        avatar: activeSession.recipientAvatar,
+        text: randomComp,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        reactions: { "💖": 2, "🔥": 1 }
+      };
+
+      setChats(prev => prev.map((s, idx) => {
+        if (idx === activeDmIdx) {
+          return { ...s, messages: [...s.messages, gratitudeMessage] };
+        }
+        return s;
+      }));
+    }, 1200);
+  };
   
   const [showingStory, setShowingStory] = useState<{
     username: string;
@@ -498,8 +672,6 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
         timestamp: new Date().toISOString()
       };
 
-      const { db } = await import("../lib/firebase");
-      const { doc, setDoc } = await import("firebase/firestore");
       await setDoc(doc(db, "reports", reportId), newReportData);
 
       localStorage.setItem(`nexa_last_report_time_${profile.username.toLowerCase()}`, Date.now().toString());
@@ -769,6 +941,21 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
 
     const activeSession = chats[activeDmIdx];
     if (!activeSession) return;
+
+    // Check if recipient is an AI mentor node, and charge 5 coins fee!
+    const isAiRecipient = activeSession.recipientName.toLowerCase().includes("ai") || 
+                          activeSession.recipientName.includes("Dr. Evelyn") || 
+                          activeSession.recipientName.includes("Marcus") || 
+                          activeSession.recipientName.includes("Professor") ||
+                          activeSession.recipientName.includes("Evelyn") ||
+                          activeSession.recipientName.includes("Veda") ||
+                          activeSession.recipientName.includes("Thorne");
+
+    if (isAiRecipient) {
+      if (onDeductCoins && !onDeductCoins(5)) {
+        return; // Blocked due to insufficient coins!
+      }
+    }
 
     const newMessage: ChatMessage = {
       id: `m_dm_${Date.now()}`,
@@ -1346,6 +1533,60 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
                   </button>
                 </div>
 
+                {/* Super-aesthetic "Go Viral ✨" Event Controller */}
+                <div className="bg-gradient-to-r from-amber-500/20 to-pink-500/10 border border-amber-500/30 rounded-2xl p-3.5 space-y-2">
+                  <div className="flex justify-between items-center text-[10px] font-mono font-bold text-amber-200">
+                    <span className="flex items-center gap-1">✨ REEL VIRAL PROJECTION</span>
+                    <span>{viralReels.includes(currentReel.id) ? "🔥 VIRAL PEAK REACHED" : "💫 ELIGIBLE"}</span>
+                  </div>
+                  
+                  {/* Stats Counter */}
+                  <div className="grid grid-cols-3 gap-1 bg-black/60 rounded-xl p-2.5 border border-white/5 text-center font-mono">
+                    <div>
+                      <span className="text-[8px] text-gray-500 block uppercase font-bold">Views</span>
+                      <span className={`text-[11px] font-black ${viralReels.includes(currentReel.id) ? "text-amber-400 animate-pulse" : "text-white"}`}>
+                        {viralReels.includes(currentReel.id) ? "1.4M+" : "2.5K"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[8px] text-gray-500 block uppercase font-bold">Likes</span>
+                      <span className="text-[11px] font-black text-white">
+                        {viralReels.includes(currentReel.id) ? "240K+" : `${rx.smart + rx.genius + rx.fast + rx.legendary || 42}`}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[8px] text-gray-500 block uppercase font-bold">Shares</span>
+                      <span className="text-[11px] font-black text-rose-400">
+                        {viralReels.includes(currentReel.id) ? "12.8K" : "14"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      if (viralReels.includes(currentReel.id)) {
+                        onAddNotification("Viral Peak Met", "This reel already experienced a viral breakout. Limit is one major payout per loop dynamic!", "alert");
+                        return;
+                      }
+                      if (onDeductCoins && !onDeductCoins(5)) {
+                        return; // Blocked because of coin balance fee check
+                      }
+                      setViralReels(prev => [...prev, currentReel.id]);
+                      onAddNotification("🚀 GOING VIRAL! 🚀", "Whiteboard loop is circulating globally! Millions of nodes connected!", "success");
+                      // Reward 20,000 Coins + 5000 XP which matches "when in reel the reel get virel it get 20000 coin"
+                      onGrantRewards(5000, 20000);
+                    }}
+                    className={`w-full py-2.5 rounded-xl font-mono text-xs uppercase cursor-pointer border-none flex items-center justify-center gap-1.5 transition-all font-black ${
+                      viralReels.includes(currentReel.id)
+                        ? "bg-amber-400/25 text-amber-300 border border-amber-400/30 cursor-not-allowed"
+                        : "bg-gradient-to-r from-amber-400 via-rose-500 to-purple-600 text-black hover:brightness-110 shadow-[0_4px_15px_rgba(245,158,11,0.25)]"
+                    }`}
+                  >
+                    <span>⚡ BOOST & GO VIRAL!</span>
+                    {!viralReels.includes(currentReel.id) && <span className="bg-black/20 text-white text-[9px] px-1.5 py-0.5 rounded-md font-bold">+20,000 Coins 🪙</span>}
+                  </button>
+                </div>
+
                 {/* Comments on Reel */}
                 <span className="text-[9px] font-mono text-gray-500 block uppercase font-bold tracking-widest mt-1">Comments Array ({commentsList.length})</span>
                 <div className="bg-black/40 rounded-xl p-3 border border-white/5 space-y-2.5 max-h-[140px] overflow-y-auto custom-scrollbar">
@@ -1608,7 +1849,7 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
                     <div className="min-w-0">
                       <h5 className="text-xs font-bold text-gray-200 truncate">@{ch.recipientName}</h5>
                       <span className="text-[9px] text-[#CCFF00] font-mono truncate block">
-                        {ch.recipientName.includes("AI") ? "🧠 Cloud Cyber-Mentor" : "Peer Student"}
+                        {ch.recipientName.includes("AI") || ch.recipientName.includes("Dr. Evelyn") || ch.recipientName.includes("Professor") ? "🧠 Cyber-Mentor AI" : "Peer Student"}
                       </span>
                     </div>
                   </div>
@@ -1617,28 +1858,80 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
             </div>
 
             {/* Chat Body panel */}
-            <div className="md:col-span-2 neo-glass rounded-[32px] p-5 border-white/5 bg-black/45 h-full flex flex-col justify-between h-[400px]">
+            <div className="md:col-span-2 neo-glass rounded-[32px] p-5 border-white/5 bg-black/45 h-full flex flex-col justify-between h-[450px] relative">
               <div className="flex justify-between items-center border-b border-white/5 pb-2">
                 <div className="flex items-center gap-2">
-                  <img src={activeSession.recipientAvatar} alt="" className="w-7 h-7 rounded-full object-cover" />
-                  <span className="text-xs font-bold text-white">@{activeSession.recipientName}</span>
+                  <img src={activeSession.recipientAvatar} alt="" className="w-7 h-7 rounded-full object-cover animate-pulse" />
+                  <div>
+                    <span className="text-xs font-bold text-white block">@{activeSession.recipientName}</span>
+                    <span className="text-[8px] text-emerald-400 font-mono flex items-center gap-1">● Online Node Connected</span>
+                  </div>
                 </div>
-                <span className="text-[8.5px] font-mono text-[#CCFF00] uppercase tracking-wider">Channel Synchronized</span>
+                <button
+                  type="button"
+                  onClick={() => setShowGiftModal(true)}
+                  className="flex items-center gap-1.5 py-1 px-3 bg-pink-500/15 hover:bg-pink-500/25 border border-pink-500/30 text-pink-300 font-mono text-[9px] font-bold rounded-full cursor-pointer transition-all active:scale-95"
+                >
+                  <Gift className="w-3 h-3 text-pink-400" />
+                  <span>SEND GIFT 🎁</span>
+                </button>
               </div>
 
               {/* Chat lines stream */}
-              <div className="flex-1 overflow-y-auto space-y-3.5 my-4 p-2.5 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto space-y-3.5 my-4 p-2.5 custom-scrollbar relative">
                 {activeSession.messages.map(msg => {
                   const isYou = msg.sender === "You";
+                  const isVoiceMsg = msg.text.startsWith("🎤 [Voice Message");
+                  const isGiftMsg = msg.text.startsWith("🎁 Sent Gift") || msg.text.startsWith("🎁 Sent a");
+
                   return (
                     <div key={msg.id} className={`flex items-start gap-2.5 ${isYou ? "flex-row-reverse text-right" : ""}`}>
-                      <img src={msg.avatar} alt="" className="w-5.5 h-5.5 rounded-full object-cover" />
+                      <img src={msg.avatar} alt="" className="w-5.5 h-5.5 rounded-full object-cover border border-white/10" />
                       <div className={`p-3 rounded-2xl text-xs font-mono max-w-[80%] leading-relaxed ${
                         isYou 
                           ? "bg-gradient-to-br from-cyan-400/20 to-purple-600/10 border border-cyan-500/20 text-white" 
                           : "bg-black/55 border border-white/5 text-gray-200"
                       }`}>
-                        <p className="whitespace-pre-wrap">{msg.text}</p>
+                        {isVoiceMsg ? (
+                          <div className="flex items-center gap-3 py-1.5 px-2.5 bg-black/40 rounded-xl border border-white/5 min-w-[210px] text-left">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (playingVoiceMsgId === msg.id) {
+                                  setPlayingVoiceMsgId(null);
+                                } else {
+                                  setPlayingVoiceMsgId(msg.id);
+                                }
+                              }}
+                              className="w-8 h-8 rounded-full bg-[#CCFF00] hover:scale-105 transition-all text-black flex items-center justify-center border-none cursor-pointer text-xs shrink-0"
+                            >
+                              {playingVoiceMsgId === msg.id ? "⏸️" : "▶️"}
+                            </button>
+                            <div className="flex-1 min-w-0">
+                              {/* Pulse wave bars if playing */}
+                              <div className="flex items-end gap-1 h-5 mb-1.5">
+                                {[3, 7, 5, 8, 4, 9, 6, 8, 4, 10, 5, 7, 3, 6, 4].map((val, barIdx) => (
+                                  <span
+                                    key={barIdx}
+                                    style={{ height: `${playingVoiceMsgId === msg.id ? Math.min(val * 2.2 + Math.random() * 4, 20) : val * 1.3}px` }}
+                                    className={`w-0.5 rounded-full transition-all duration-150 ${playingVoiceMsgId === msg.id ? "bg-[#CCFF00] animate-pulse" : "bg-gray-750"}`}
+                                  />
+                                ))}
+                              </div>
+                              <span className="text-[8px] font-mono text-gray-400 block truncate">{msg.text}</span>
+                            </div>
+                          </div>
+                        ) : isGiftMsg ? (
+                          <div className="py-2.5 px-3 bg-gradient-to-br from-pink-500/10 via-purple-500/5 to-amber-500/10 border border-pink-500/25 rounded-xl text-left shadow-[0_0_15px_rgba(236,72,153,0.05)]">
+                            <div className="flex items-center gap-1.5 mb-1.5">
+                              <span className="text-sm">🎁</span>
+                              <span className="font-extrabold text-[#FF449F] uppercase text-[8px] tracking-widest block">NEXA ACADEMIC GIFT</span>
+                            </div>
+                            <p className="text-[10.5px] text-gray-300 whitespace-pre-wrap leading-relaxed">{msg.text}</p>
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-wrap">{msg.text}</p>
+                        )}
                         <span className="text-[8px] text-gray-500 block mt-1.5 uppercase font-black">{msg.time}</span>
                       </div>
                     </div>
@@ -1646,22 +1939,110 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
                 })}
               </div>
 
-              {/* Input direct reply field */}
-              <form onSubmit={handleSendDmText} className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Transmit communication packet..."
-                  value={dmInput}
-                  onChange={(e) => setDmInput(e.target.value)}
-                  className="flex-1 bg-black/40 border border-white/5 rounded-xl py-2 px-3.5 text-xs text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-400/50 font-mono"
-                />
+              {/* Status footer for ongoing active recordings */}
+              {isRecordingVoice && (
+                <div className="flex items-center gap-3 bg-red-950/20 border border-red-500/30 rounded-2xl p-3 mb-2 animate-pulse justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping inline-block" />
+                    <span className="text-[10px] font-mono text-rose-400 font-extrabold">TRANSMITTING SECURE AUDIO TELEMETRY:</span>
+                  </div>
+                  <span className="text-[10px] font-mono font-black text-rose-300">0:0{recordDuration}s</span>
+                </div>
+              )}
+
+              {/* Input reply form bar */}
+              <div className="flex items-center gap-2">
+                {/* Voice Record trigger button */}
                 <button
-                  type="submit"
-                  className="py-2 px-4.5 bg-[#CCFF00] hover:bg-[#b5e000] text-black font-mono text-[10px] font-extrabold rounded-xl cursor-pointer"
+                  type="button"
+                  onClick={() => {
+                    if (isRecordingVoice) {
+                      stopVoiceRecordingAndSend();
+                    } else {
+                      startVoiceRecording();
+                    }
+                  }}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-all cursor-pointer shrink-0 ${
+                    isRecordingVoice 
+                      ? "bg-rose-600 border-rose-500 text-white animate-pulse" 
+                      : "bg-black/55 border-white/5 text-gray-400 hover:text-white"
+                  }`}
+                  title={isRecordingVoice ? "Stop Recording & Send Voice" : "Record Voice Message"}
                 >
-                  TRANSMIT
+                  {isRecordingVoice ? (
+                    <span className="text-xs font-bold">⏹️</span>
+                  ) : (
+                    <Mic className="w-4 h-4" />
+                  )}
                 </button>
-              </form>
+
+                <form onSubmit={handleSendDmText} className="flex-1 flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Transmit communication packet..."
+                    value={dmInput}
+                    onChange={(e) => setDmInput(e.target.value)}
+                    className="flex-1 bg-black/40 border border-white/5 rounded-xl py-2 px-3.5 text-xs text-white placeholder:text-gray-600 focus:outline-none focus:border-cyan-400/50 font-mono"
+                  />
+                  <button
+                    type="submit"
+                    className="py-2.5 px-4.5 bg-[#CCFF00] hover:bg-[#b5e000] text-black font-mono text-[10px] font-extrabold rounded-xl cursor-pointer"
+                  >
+                    TRANSMIT
+                  </button>
+                </form>
+              </div>
+
+              {/* Dynamic Popup Modal overlay: Academic Gift Selector */}
+              <AnimatePresence>
+                {showGiftModal && (
+                  <div className="absolute inset-0 bg-black/90 backdrop-blur-md rounded-[32px] p-5 z-40 flex flex-col justify-between animate-fade-in border border-white/10">
+                    <div className="flex justify-between items-center border-b border-white/5 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <Gift className="w-4 h-4 text-pink-400" />
+                        <h4 className="text-xs font-black text-white uppercase tracking-widest font-mono">Academic Gift Compiler</h4>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowGiftModal(false)}
+                        className="p-1 bg-white/5 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white border-none cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto py-3 space-y-2.5 custom-scrollbar">
+                      <p className="text-[10px] text-gray-400 font-mono leading-relaxed mb-3">
+                        Dispatch premium reward assets to strengthen peer study bonds. Sending a gift awards considerable XP points while boosting cooperation quotients!
+                      </p>
+
+                      {studyGifts.map(g => (
+                        <div
+                          key={g.name}
+                          onClick={() => handleSendGift(g)}
+                          className="flex justify-between items-center bg-white/[0.02] hover:bg-white/5 border border-white/5 hover:border-pink-500/30 rounded-xl p-2.5 cursor-pointer transition-all group"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl group-hover:scale-110 transition-all">{g.emoji}</span>
+                            <div className="text-left">
+                              <h5 className="text-[11px] font-bold text-white group-hover:text-pink-400 transition-colors uppercase font-mono">{g.name}</h5>
+                              <span className="text-[9px] text-gray-500 block">{g.bonus}</span>
+                            </div>
+                          </div>
+                          <div className="text-right flex flex-col items-end gap-1">
+                            <span className="text-[10px] text-pink-400 font-mono font-bold font-black">{g.cost} 🪙</span>
+                            <span className="text-[8px] bg-white/5 text-gray-400 py-0.5 px-2 rounded-full font-mono">+{g.xp} XP</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="border-t border-white/5 pt-2 text-center">
+                      <span className="text-[8.5px] text-gray-600 font-mono uppercase">Nodes automatically synchronized upon delivery</span>
+                    </div>
+                  </div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         );

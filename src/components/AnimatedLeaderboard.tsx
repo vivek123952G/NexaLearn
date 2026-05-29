@@ -20,17 +20,14 @@ interface Player {
   battleWins: number;
   aiUsage: number;
   streak: number;
+  status?: "online" | "offline" | "left";
 }
 
 interface AnimatedLeaderboardProps {
-  profile: {
-    username: string;
-    avatar: string;
-    league: "Bronze" | "Silver" | "Gold" | "Titan" | "Legend" | string;
-    xp: number;
-    streak?: number;
-  };
+  profile: any;
   allUsers: any[];
+  onSaveProfile?: (updated: any) => void;
+  onDeductCoins?: (amount: number) => boolean;
 }
 
 interface MiniCheer {
@@ -57,12 +54,66 @@ const countries = [
   { flag: "🇮🇹", code: "IT" },
 ];
 
-export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({ profile, allUsers }) => {
+export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({ 
+  profile, 
+  allUsers, 
+  onSaveProfile, 
+  onDeductCoins 
+}) => {
   const [selectedLeagueTab, setSelectedLeagueTab] = useState<string>("All");
   const [selectedCategory, setSelectedCategory] = useState<"global" | "weekly" | "study" | "battle" | "ai" | "streak">("global");
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<"All" | "online" | "offline" | "left">("All");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
   const [cheers, setCheers] = useState<Record<string, MiniCheer[]>>({});
+
+  // Dynamic state dictionary storing statuses for each student
+  const [sessionStatuses, setSessionStatuses] = useState<Record<string, { online: boolean; status: "online" | "offline" | "left"; lastSeenLabel: string }>>({});
+
+  useEffect(() => {
+    const statuses: Record<string, { online: boolean; status: "online" | "offline" | "left"; lastSeenLabel: string }> = {};
+    const possibleLastSeens = ["Left 2m ago", "Left 5m ago", "Left 15m ago", "Left 1h ago", "Offline", "Left 30s ago"];
+    
+    // Seed initial values
+    if (allUsers && allUsers.length > 0) {
+      allUsers.forEach((u, i) => {
+        const username = u.username || `User_${i}`;
+        // Distribute: ~40% online, ~30% offline, ~30% left the app
+        const rand = i % 3;
+        if (rand === 0) {
+          statuses[username] = { online: true, status: "online", lastSeenLabel: "Online Now" };
+        } else if (rand === 1) {
+          statuses[username] = { online: false, status: "offline", lastSeenLabel: possibleLastSeens[i % possibleLastSeens.length] };
+        } else {
+          statuses[username] = { online: false, status: "left", lastSeenLabel: "Left the app" };
+        }
+      });
+    }
+    setSessionStatuses(statuses);
+
+    // Dynamic state simulator mimicking live connections
+    const timer = setInterval(() => {
+      setSessionStatuses(prev => {
+        const copy = { ...prev };
+        const keys = Object.keys(copy);
+        if (keys.length === 0) return prev;
+        
+        // Randomly choose a user node to update status
+        const randomKey = keys[Math.floor(Math.random() * keys.length)];
+        const nextRand = Math.random();
+        if (nextRand < 0.35) {
+          copy[randomKey] = { online: true, status: "online", lastSeenLabel: "Online Now" };
+        } else if (nextRand < 0.7) {
+          copy[randomKey] = { online: false, status: "left", lastSeenLabel: "Just left the app" };
+        } else {
+          copy[randomKey] = { online: false, status: "offline", lastSeenLabel: "Offline" };
+        }
+        return copy;
+      });
+    }, 4000);
+
+    return () => clearInterval(timer);
+  }, [allUsers]);
 
   // Persistent user scores from localStorage with safety defaults
   const userMetrics = useMemo(() => {
@@ -108,20 +159,27 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({ profil
       ? (profile.streak || 0) 
       : (charCodeSum % 14) + 1;
 
+    const statusData = sessionStatuses[name] || {
+      online: isYou ? true : idx % 3 === 0,
+      status: isYou ? "online" : (idx % 3 === 1 ? "offline" : "left" as const),
+      lastSeenLabel: isYou ? "Online Now" : "Offline"
+    };
+
     return {
       username: name,
       avatar: u.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${name}`,
       league: u.league || "Bronze",
       xp: u.xp || 0,
-      online: isYou ? true : !!u.online,
-      lastSeen: u.lastSeen || "Offline",
+      online: isYou ? true : statusData.status === "online",
+      lastSeen: isYou ? "Online Now" : statusData.lastSeenLabel,
       isInteractiveUser: isYou,
       country: countryObj.flag,
       weeklyXp: derivedWeeklyXp,
       studyTime: derivedStudyTime,
       battleWins: derivedBattleWins,
       aiUsage: derivedAiUsage,
-      streak: derivedStreak
+      streak: derivedStreak,
+      status: isYou ? "online" : statusData.status
     };
   };
 
@@ -150,7 +208,8 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({ profil
       .filter(p => {
         const matchesSearch = p.username.toLowerCase().includes(searchQuery.toLowerCase());
         const matchesLeague = selectedLeagueTab === "All" || p.league.toLowerCase() === selectedLeagueTab.toLowerCase();
-        return matchesSearch && matchesLeague;
+        const matchesStatus = selectedStatusFilter === "All" || p.status === selectedStatusFilter;
+        return matchesSearch && matchesLeague && matchesStatus;
       })
       .sort((a, b) => {
         // Dynamically sort based on the chosen leaderboard metric
@@ -161,7 +220,7 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({ profil
         if (selectedCategory === "streak") return b.streak - a.streak;
         return b.xp - a.xp; // 'global'
       });
-  }, [userCompetitorObj, mappedCompetitors, searchQuery, selectedLeagueTab, selectedCategory]);
+  }, [userCompetitorObj, mappedCompetitors, searchQuery, selectedLeagueTab, selectedCategory, selectedStatusFilter]);
 
   // Find true ranks in unfiltered global pool of users to preserve objective worldwide stats
   const trueWorldwideRanks = useMemo(() => {
@@ -289,6 +348,105 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({ profil
         </motion.p>
       </div>
 
+      {/* Modern Premium Battle Pass & Seasonal Esports Rewards Container */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gradient-to-br from-purple-900/40 via-black/50 to-cyan-950/20 p-5 rounded-[32px] border border-white/5 shadow-2xl">
+        {/* Pass Status Console */}
+        <div className="space-y-3.5 bg-black/60 p-4 rounded-2xl border border-white/5 flex flex-col justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm">🎫</span>
+              <h4 className="text-xs font-mono font-black text-purple-300 uppercase tracking-widest">NexaLearn Premium Season Pass</h4>
+            </div>
+            
+            {profile?.premiumTier !== "FREE" ? (
+              <div className="space-y-2">
+                <div className="inline-block px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono font-black uppercase tracking-wider">
+                  👑 PREMIUM SEASON ACTIVE (VIP PRESTIGE)
+                </div>
+                <p className="text-[11px] text-gray-400 font-mono leading-relaxed">
+                  Excellent! You are an active VIP Premium Season Pass holder. Experience full visual bonuses across the cybercampus!
+                </p>
+                <div className="grid grid-cols-2 gap-1.5 pt-1 text-[9px] font-mono text-cyan-300 uppercase">
+                  <div>🟢 2x Battle XP Multiplier</div>
+                  <div>🟢 Golden Glow Border</div>
+                  <div>🟢 Solver Micro-Indicators</div>
+                  <div>🟢 Custom Crown Avatar</div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="inline-block px-3 py-1 rounded-full bg-zinc-500/20 text-zinc-400 border border-zinc-500/30 text-[10px] font-mono font-black uppercase tracking-wider">
+                  👥 FREE STANDARD MEMBERSHIP
+                </div>
+                <p className="text-[11px] text-gray-400 font-mono leading-relaxed">
+                  Standard account verified. Upgrade to Premium Pass to claim 2x XP, golden cyberframes, custom avatar labels, and infinite solver access.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {profile?.premiumTier === "FREE" && (
+            <div className="pt-2">
+              <button
+                onClick={() => {
+                  if (onDeductCoins) {
+                    const ok = onDeductCoins(500);
+                    if (ok) {
+                      if (onSaveProfile) {
+                        onSaveProfile({ ...profile, premiumTier: "PREMIUM" });
+                        alert("🎉 CONGRATULATIONS! You have successfully purchased the Premium Season Pass! Enjoy 2x XP and all VIP active features!");
+                      }
+                    } else {
+                      alert("⚠️ Insufficient Balance! Premium Pass costs 500 Coins 🪙. Earn coins by getting your study reels viral or finishing courses!");
+                    }
+                  } else {
+                    alert("⚠️ Integration sync loading... try again shortly.");
+                  }
+                }}
+                className="w-full py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 hover:brightness-110 active:scale-98 text-white font-extrabold text-[11px] rounded-xl font-mono uppercase cursor-pointer flex items-center justify-center gap-1 border-none shadow-[0_4px_15px_rgba(168,85,247,0.3)] transition-all"
+              >
+                <span>🔥 UPGRADE TO PREMIUM SEASON PASS</span>
+                <span className="bg-black/25 text-[#CCFF00] text-[9.5px] px-1.5 py-0.5 rounded-md font-black">500 COINS 🪙</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Tournament Prize Pool Overview */}
+        <div className="bg-black/40 p-4 rounded-2xl border border-white/5 space-y-3 font-mono">
+          <div className="flex justify-between items-center pb-2 border-b border-white/5">
+            <span className="text-[10px] font-black text-amber-300 uppercase tracking-widest flex items-center gap-1">🏆 CHAMPIONSHIP REWARDS</span>
+            <span className="text-[9px] text-gray-500 uppercase font-black">SEASON 1</span>
+          </div>
+          
+          <div className="space-y-2.5 text-[10px] leading-relaxed">
+            <div className="flex justify-between items-start bg-amber-500/10 p-2 rounded-xl border border-amber-500/20">
+              <span className="text-amber-200 font-bold">🥇 RANK 1 (LEGEND LEAGUE CHIEF)</span>
+              <div className="text-right">
+                <span className="text-white block font-black">Premium Season Pass 🎫</span>
+                <span className="text-amber-300 font-bold">+50,000 Coins 🪙</span>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-start bg-purple-500/10 p-2 rounded-xl border border-purple-500/15">
+              <span className="text-purple-300 font-bold">🥈 RANKS 2 - 5 (TITAN ELITES)</span>
+              <div className="text-right">
+                <span className="text-white block font-black">Premium Season Pass 🎫</span>
+                <span className="text-purple-300 font-bold">+15,000 Coins 🪙</span>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-start bg-cyan-500/5 p-2 rounded-xl border border-white/5">
+              <span className="text-cyan-400 font-bold">🥉 RANKS 6 - 20 (GOLD VETERANS)</span>
+              <div className="text-right">
+                <span className="text-white block font-black">Championship Cosmic Star ⭐</span>
+                <span className="text-cyan-400 font-bold">+5,000 Coins 🪙</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Modern Six-Leaderboard Categories Grid Tabs */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 bg-black/40 p-2 rounded-[24px] border border-white/5">
         {leaderboardCategories.map((cat) => {
@@ -318,37 +476,70 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({ profil
         })}
       </div>
 
-      {/* League Selection and Search Drawer */}
-      <div className="neo-glass rounded-3xl p-4 border-white/5 space-y-4 bg-black/30">
+      {/* League Selection, Status Filters, and Search Drawer */}
+      <div className="neo-glass rounded-3xl p-4 border-white/5 space-y-3 bg-black/30">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          {/* League Filter row */}
-          <div className="flex flex-wrap items-center gap-1.5 p-1 bg-black/40 rounded-2xl border border-white/5">
-            {["All", "Legend", "Titan", "Gold", "Silver", "Bronze"].map((tab) => {
-              const active = selectedLeagueTab === tab;
-              return (
-                <button
-                  key={tab}
-                  onClick={() => setSelectedLeagueTab(tab)}
-                  className={`relative px-3.5 py-1.5 text-[10px] font-mono font-extrabold uppercase rounded-xl transition-colors duration-200 select-none cursor-pointer border-none ${
-                    active ? "text-cyan-900 bg-cyan-400 font-black" : "text-gray-400 hover:text-white bg-transparent"
-                  }`}
-                >
-                  {tab}
-                </button>
-              );
-            })}
+          <div className="flex flex-col gap-2">
+            <span className="text-[9px] font-mono text-gray-500 uppercase tracking-wider">Filtered League Rank Match</span>
+            {/* League Filter row */}
+            <div className="flex flex-wrap items-center gap-1.5 p-1 bg-black/40 rounded-2xl border border-white/5">
+              {["All", "Legend", "Titan", "Gold", "Silver", "Bronze"].map((tab) => {
+                const active = selectedLeagueTab === tab;
+                return (
+                  <button
+                    key={tab}
+                    onClick={() => setSelectedLeagueTab(tab)}
+                    className={`relative px-3.5 py-1.5 text-[10px] font-mono font-extrabold uppercase rounded-xl transition-colors duration-200 select-none cursor-pointer border-none ${
+                      active ? "text-cyan-900 bg-cyan-400 font-black" : "text-gray-400 hover:text-white bg-transparent"
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Real-time search */}
-          <div className="relative min-w-[200px] md:min-w-[260px]">
-            <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3top-1/2 left-3.5 top-1/2 -translate-y-1/2" />
+          <div className="relative min-w-[200px] md:min-w-[260px] self-end">
+            <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder="Search Competitor Nodes..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-black/40 border border-white/5 rounded-2xl py-2 pl-10 pr-4 text-[11px] text-white font-mono placeholder:text-gray-500 focus:outline-none focus:border-cyan-400/50 transition-all focus:bg-black/60"
+              className="w-full bg-[#050505] border border-white/5 rounded-2xl py-2 pl-10 pr-4 text-[11px] text-white font-mono placeholder:text-gray-500 focus:outline-none focus:border-cyan-400/50 transition-all focus:bg-black/60"
             />
+          </div>
+        </div>
+
+        {/* Live Networking Peer online/offline/left filters row */}
+        <div className="flex flex-col gap-1.5 pt-2 border-t border-white/[0.03]">
+          <span className="text-[9px] font-mono text-gray-400 uppercase tracking-widest flex items-center gap-1">
+            <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" /> Live Student Network Status:
+          </span>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { id: "All", label: "All Members" },
+              { id: "online", label: "🟢 Online Now" },
+              { id: "offline", label: "⚪ Offline / Standby" },
+              { id: "left", label: "🔴 Left App" }
+            ].map(pill => {
+              const active = selectedStatusFilter === pill.id;
+              return (
+                <button
+                  key={pill.id}
+                  onClick={() => setSelectedStatusFilter(pill.id as any)}
+                  className={`px-3 py-1.5 rounded-xl text-[10px] font-mono tracking-tight font-extrabold flex items-center gap-1.5 cursor-pointer border transition-all ${
+                    active 
+                      ? "bg-gradient-to-r from-cyan-400/20 to-purple-500/10 border-cyan-400 text-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.15)]"
+                      : "bg-[#111] border-white/5 text-gray-400 hover:text-white"
+                  }`}
+                >
+                  <span>{pill.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -630,8 +821,12 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({ profil
                                 : 'border border-white/10'
                             }`}
                           />
-                          {player.online && (
-                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#090b11]" />
+                          {player.status === "online" ? (
+                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-[#090b11]" title="Online Active" />
+                          ) : player.status === "left" ? (
+                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#090b11]" title="Left Application" />
+                          ) : (
+                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-zinc-400 rounded-full border-2 border-[#090b11]" title="Offline" />
                           )}
                         </div>
 
@@ -649,14 +844,22 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({ profil
                             )}
                           </div>
                           
-                          <div className="flex items-center gap-2 mt-0.5 text-[9px] text-[#8C8F9F] font-mono">
+                          <div className="flex items-center gap-2 mt-0.5 text-[9px] text-[#8C8F9F] font-mono flex-wrap">
                             <span className={`px-2 py-0.5 rounded-full border text-[8px] uppercase tracking-wider font-extrabold ${getLeagueBadgeStyles(player.league)}`}>
                               {player.league}
                             </span>
-                            {player.online ? (
-                              <span className="text-emerald-400 font-bold flex items-center gap-1">● Active</span>
+                            {player.status === "online" ? (
+                              <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/15 px-1.5 py-0.5 rounded-md text-[8px] font-bold flex items-center gap-1 shrink-0">
+                                <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" /> Online Node
+                              </span>
+                            ) : player.status === "left" ? (
+                              <span className="bg-red-500/10 text-red-400 border border-red-500/15 px-1.5 py-0.5 rounded-md text-[8px] font-bold flex items-center gap-1 shrink-0">
+                                <span className="w-1.5 h-1.5 bg-red-500 rounded-full" /> Left App
+                              </span>
                             ) : (
-                              <span className="text-gray-500">{player.lastSeen}</span>
+                              <span className="bg-zinc-500/10 text-zinc-400 border border-zinc-500/15 px-1.5 py-0.5 rounded-md text-[8px] font-bold flex items-center gap-1 shrink-0">
+                                <span className="w-1.5 h-1.5 bg-zinc-400 rounded-full" /> Offline ({player.lastSeen})
+                              </span>
                             )}
                           </div>
                         </div>

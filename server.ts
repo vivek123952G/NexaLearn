@@ -276,6 +276,229 @@ app.post("/api/gemini/predict", async (req, res) => {
   });
 });
 
+// 5. AI Language Tutor Endpoint
+app.post("/api/gemini/tutor", async (req, res) => {
+  const { message, chatHistory, language, mode, standard } = req.body;
+  
+  if (!message) {
+    return res.status(400).json({ error: "Missing user message" });
+  }
+
+  const ai = getAI();
+  if (ai) {
+    try {
+      // Build system prompt based on user specs and requested prompt
+      const systemInstruction = `You are NexaLearn AI — an advanced multilingual AI tutor and conversation partner designed for users worldwide.
+Your mission is to help users learn, practice, speak, understand, and improve communication skills in ANY world language through natural conversations, pronunciation coaching, grammar correction, translations, and interactive learning.
+
+You support ALL major international languages including but not limited to: English, Hindi, Marathi, Tamil, Telugu, Bengali, Gujarati, Punjabi, Urdu, Arabic, French, Spanish, Portuguese, German, Italian, Russian, Japanese, Korean, Chinese, Thai, Turkish, Indonesian, Malay, Vietnamese, Dutch, Greek, Hebrew, Persian, Polish, Ukrainian, Romanian, Swahili, Filipino, Nepali, Sinhala, Kannada, Malayalam, Assamese, Sanskrit, Latin, etc.
+
+CURRENT STUDENT SPECIFICATIONS:
+- Target Standard/Grade Level: ${standard || "University level"} (Tailor vocabulary and explanation complexity to this grade level perfectly, from Standard/Grade 1 to University graduates)
+- Practice Language: ${language || "English"}
+- Selected Mode: ${mode || "Daily Conversation"}
+
+Core AI Behavior:
+- Speak naturally like a real human tutor.
+- Be friendly, supportive, intelligent, and motivating.
+- Adapt automatically to beginner, intermediate, or advanced users.
+- Keep conversations interactive and engaging.
+- Encourage users to continue speaking confidently.
+- Use simple explanations for beginners.
+- Use fluent native-level communication for advanced learners.
+
+Conversation Rules:
+- Always respond naturally.
+- Never shame or insult users for mistakes.
+- Correct mistakes politely and clearly (and formatting-friendly).
+- Continue conversations with follow-up questions.
+- Encourage users regularly.
+- Keep responses concise unless detailed explanation is requested.
+
+Grammar Correction Style Example:
+User: "I goed to market."
+AI: "Nice try 😊\nCorrect sentence: 'I went to the market.'\n\nWhat did you buy there?"
+
+Pronunciation Coaching style:
+- Break difficult words into syllables.
+- Explain pronunciation in simple phonetics.
+- Encourage repetition practice.
+- Provide accent guidance gently.
+
+Special Learning Modes rules:
+- Beginner Mode: Speak slower, simple words, provide side translations.
+- Advanced Mode: Elite native vocabulary, challenging idiom usage.
+- Kids Mode: Extremely short, high energy, gaming vocabulary.
+- IELTS Practice: Structure feedback like IELTS examiners with score estimation.
+- Interview Practice: Challenge user with tough career-specific questions.
+- Daily Conversation: Friendly, engaging, lightweight feedback.
+
+Please reply to the user message: "${message}". Engage in the requested practice language directly.`;
+
+      // Structure contents with simplified list of messages for history
+      const contents = [];
+      if (chatHistory && Array.isArray(chatHistory)) {
+        for (const msg of chatHistory.slice(-6)) {
+          contents.push({
+            role: msg.role === "assistant" ? "model" as const : "user" as const,
+            parts: [{ text: msg.text }]
+          });
+        }
+      }
+      contents.push({
+        role: "user" as const,
+        parts: [{ text: message }]
+      });
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: contents,
+        config: {
+          systemInstruction: systemInstruction,
+        }
+      });
+
+      return res.json({
+        success: true,
+        reply: response.text || "I was unable to formulate a response. Let us try again!",
+        provider: "Gemini 3.5 Flash"
+      });
+    } catch (e: any) {
+      console.warn("Gemini tutor error. Falling back to offline simulator...", e.message);
+    }
+  }
+
+  // Consistent offline responsive simulation
+  const reply = simulateLanguageTutorResponse(message, language, mode, standard);
+  return res.json({
+    success: true,
+    reply,
+    provider: "NexaLearn Local AI Tutor Core (Offline Mode)"
+  });
+});
+
+function simulateLanguageTutorResponse(message: string, language: string, mode: string, standard: string) {
+  const cleanMsg = message.toLowerCase();
+  let langLabel = language || "English";
+  let stdLabel = standard || "University";
+
+  if (cleanMsg.includes("hello") || cleanMsg.includes("hi") || cleanMsg.includes("namaste")) {
+    return `Hello! 😊 Natural greeting detected. As your NexaLearn AI Language Tutor for **${langLabel}** (${stdLabel} standard), I am thrilled to chat. Let's practice! How are you doing today?`;
+  }
+  
+  if (cleanMsg.includes("went") || cleanMsg.includes("goed")) {
+    return `Nice try 😊\n\nCorrect sentence pattern:\n**"I went to the market."**\n\n(We always use the past tense 'went' instead of 'goed' in ${langLabel}).\n\nWhat did you buy or look for there?`;
+  }
+
+  if (mode && mode.toLowerCase().includes("ielts")) {
+    return `[IELTS Academic Mode - Band 8.5 target] \n\nYour sentence of "${message}" was grammatically intact. For IELTS, we can upgrade the lexical resource by substituting common verbs with advanced synonyms. \n\nHow do you structure your answer for describing hobbies? Let's keep going!`;
+  }
+
+  return `Splendid! I have parsed your practice input in **${langLabel}** at the **${stdLabel}** level. You are doing fantastic! Can you share a bit more about your study goals with me?`;
+}
+
+// 5b. NexaLearn AI Talk Teacher Mode Endpoint
+app.post("/api/gemini/talk-teacher", async (req, res) => {
+  const { message, chatHistory, subject, mode, standard, language } = req.body;
+
+  if (!message) {
+    return res.status(400).json({ error: "Missing user message" });
+  }
+
+  const ai = getAI();
+  if (ai) {
+    try {
+      const systemInstruction = `You are NexaLearn Talk Teacher AI — a highly intelligent, friendly, human-like AI teacher that can teach students through real-time conversations and interactive discussions.
+Your role is to behave like a real personal teacher who explains topics clearly, answers questions naturally, motivates students, and teaches in an engaging, conversational style.
+
+CURRENT ACADEMIC PARAMETERS:
+- Student Grade/Standard Level: ${standard || "University level"} (Adapt explanations from simple Standard 1 vocabulary to deep University analysis based on this setting)
+- Subject: ${subject || "General Knowledge"}
+- Special Teaching Mode: ${mode || "Revision Mode"}
+- Preferred/Target Language: ${language || "English"}
+
+Core Teacher Personality: Friendly, Smart, Patient, Motivating, Supportive, Professional, Interactive, Human-like.
+
+Teaching Style Guidelines:
+- Explain concepts simply first using real-life examples and friendly words.
+- Then explain deeply if requested or if appropriate for standard levels.
+- Encourage students regularly. Never make them feel embarrassed for mistakes. Correct politely and positively.
+- Ask interactive questions or mini challenges during lessons.
+- Suggest interactive next-step menus frequently. For example, ask if they would like:
+  1. Simple explanation
+  2. Markdown Diagram/Visual explanation
+  3. Quiz practice / Mini Challenge
+  4. Real-life examples
+
+Conversation Rules:
+- Keep lessons engaging, concise, and highly interactive.
+- Continue conversations with friendly follow-up questions.
+- Never give robotic or monotonous responses.
+
+Please reply to the user message: "${message}". Communicate naturally in the requested language: "${language || "English"}".`;
+
+      const contents = [];
+      if (chatHistory && Array.isArray(chatHistory)) {
+        for (const msg of chatHistory.slice(-6)) {
+          contents.push({
+            role: msg.role === "assistant" ? "model" as const : "user" as const,
+            parts: [{ text: msg.text }]
+          });
+        }
+      }
+      contents.push({
+        role: "user" as const,
+        parts: [{ text: message }]
+      });
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: contents,
+        config: {
+          systemInstruction: systemInstruction,
+        }
+      });
+
+      return res.json({
+        success: true,
+        reply: response.text || "Let's explore this topic together! Ask your doubt.",
+        provider: "Gemini 3.5 Flash"
+      });
+    } catch (e: any) {
+      console.warn("Gemini talk-teacher error. Transitioning to local simulation...", e.message);
+    }
+  }
+
+  // Consistent offline responsive simulation
+  const reply = simulateTalkTeacherResponse(message, subject, mode, standard, language);
+  return res.json({
+    success: true,
+    reply,
+    provider: "NexaLearn Core AI Tutor Engine (Offline Mode)"
+  });
+});
+
+function simulateTalkTeacherResponse(message: string, subject: string, mode: string, standard: string, language: string) {
+  const cleanMsg = message.toLowerCase();
+  const subLabel = subject || "Science";
+  const stdLabel = standard || "University";
+  const langLabel = language || "English";
+
+  if (cleanMsg.includes("photosynthesis")) {
+    return `No problem 😊\n\n**Photosynthesis** (under *${subLabel}* for *${stdLabel}*) is the beautiful process plants use to make food using sunlight, water, and carbon dioxide.\n\nThink of it like plants cooking their own food inside their green leaves, using sunlight as energy!\n\nWould you like:\n1. **Simple explanation**\n2. **Diagram explanation**\n3. **Quiz practice trivia**\n4. **Real-life everyday examples**?`;
+  }
+
+  if (cleanMsg.includes("hello") || cleanMsg.includes("hi") || cleanMsg.includes("hey") || cleanMsg.includes("teacher")) {
+    return `Hello there! 👋 I am your NexaLearn AI Talk Teacher! 🎓\n\nI am thrilled to teach you **${subLabel}** at the **${stdLabel}** level. We are set to **${mode || "Revision Mode"}** practicing in **${langLabel}**.\n\nWhat topic or doubt are we tackling first? You can also ask me for a quick quiz!`;
+  }
+
+  if (cleanMsg.includes("quiz") || cleanMsg.includes("test") || cleanMsg.includes("challenge")) {
+    return `Excellent decision! Let's do a mini challenge for **${subLabel}** (${stdLabel} level).\n\n**Here is your question:**\nWhat is the primary power house of a biological cell where chemical energy (ATP) is generated?\n\nTake your time! Give me your answer or ask for a Hint! 💡`;
+  }
+
+  return `Splendid concept! I have reviewed your point regarding "${message}" under the subject of **${subLabel}**.\n\nSince we are practicing at the **${stdLabel}** level, let's explore this step-by-step. Would you like me to quiz you on this, show a simplified Markdown box diagram, or share a real-world example?`;
+}
+
 // Helper Simulation Databases
 function simulateHomeworkSolve(problem: string, mode: string) {
   const probLower = problem.toLowerCase();
