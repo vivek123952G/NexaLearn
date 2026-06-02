@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Offline | NexaLearn AI Infinity</title>
+  <style>
+    :root {
+      --bg: #070a14;
+      --card-bg: rgba(255, 255, 255, 0.03);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --accent: #CCFF00;
+      --sub-accent: #22d3ee;
+      --text: #ffffff;
+      --text-muted: #8c8f9f;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+      padding: 20px;
+    }
+
+    /* Cosmic Grid Background */
+    .bg-grid {
+      position: absolute;
+      inset: 0;
+      background-image: 
+        linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+      background-size: 30px 30px;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .glow-radial {
+      position: absolute;
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(204, 255, 0, 0.05) 0%, transparent 70%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .container {
+      position: relative;
+      z-index: 10;
+      background: rgba(10, 14, 28, 0.8);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--border-color);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), inset 0 0 12px rgba(34, 211, 238, 0.04);
+      border-radius: 32px;
+      padding: 40px 30px;
+      text-align: center;
+      max-width: 480px;
+      width: 100%;
+    }
+
+    .icon-wrapper {
+      position: relative;
+      width: 100px;
+      height: 100px;
+      margin: 0 auto 24px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .pulse-ring {
+      position: absolute;
+      inset: 0;
+      border: 2px dashed rgba(204, 255, 0, 0.3);
+      border-radius: 50%;
+      animation: rotate 15s linear infinite;
+    }
+
+    .wifi-icon {
+      width: 50px;
+      height: 50px;
+      fill: var(--accent);
+      filter: drop-shadow(0 0 10px rgba(204, 255, 0, 0.6));
+    }
+
+    .alert-badge {
+      display: inline-block;
+      text-transform: uppercase;
+      font-size: 10px;
+      letter-spacing: 2px;
+      background: rgba(34, 211, 238, 0.1);
+      color: var(--sub-accent);
+      border: 1px solid rgba(34, 211, 238, 0.25);
+      border-radius: 40px;
+      padding: 6px 14px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+
+    p {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+
+    .dashboard-metrics {
+      display: flex;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.03);
+      border-radius: 18px;
+      padding: 16px;
+      margin-bottom: 28px;
+    }
+
+    .metric-node {
+      flex: 1;
+      text-align: center;
+    }
+
+    .metric-node:first-child {
+      border-right: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .metric-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--text-muted);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .metric-value {
+      font-size: 13px;
+      font-family: monospace;
+      font-weight: bold;
+      color: var(--accent);
+    }
+
+    .button {
+      background: var(--accent);
+      color: #070a14;
+      border: none;
+      border-radius: 16px;
+      padding: 14px 28px;
+      font-size: 12px;
+      font-weight: 800;
+      font-family: monospace;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(204, 255, 0, 0.3);
+      transition: all 0.2s ease-in-out;
+      width: 100%;
+    }
+
+    .button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px rgba(204, 255, 0, 0.5);
+    }
+
+    .button:active {
+      transform: translateY(0);
+    }
+
+    @keyframes rotate {
+      100% {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="glow-radial"></div>
+
+  <div class="container">
+    <div class="alert-badge">Telemetry Status Alert</div>
+    
+    <div class="icon-wrapper">
+      <div class="pulse-ring"></div>
+      <svg class="wifi-icon" viewBox="0 0 24 24">
+        <path d="M12 21l-12-11.75c1-.98 4.79-4.25 12-4.25s11 3.27 12 4.25l-12 11.75zm0-15.5c-5.83 0-9.25 2.5-10.05 3.09l10.05 9.83 10.05-9.83c-.8-.59-4.22-3.09-10.05-3.09z" />
+        <path d="M12 17l-4-3.92c.33-.29 1.6-1.08 4-1.08s3.67.79 4 1.08l-4 3.92z" style="fill: var(--sub-accent);" />
+      </svg>
+    </div>
+
+    <h1>NexaLearn AI Infinity</h1>
+    <p>We are unable to sync with the academic cloud registers. Your local node student progress is securely saved in local storage state and will re-synchronize when connection status is restored.</p>
+
+    <div class="dashboard-metrics">
+      <div class="metric-node">
+        <span class="metric-label">Network Node</span>
+        <span class="metric-value" style="color: #ef4444;">DISCONNECTED</span>
+      </div>
+      <div class="metric-node">
+        <span class="metric-label">Local Save</span>
+        <span class="metric-value" style="color: #10b981;">SECURE &amp; COMPILING</span>
+      </div>
+    </div>
+
+    <button class="button" onclick="window.location.reload();">Retry Cloud Handshake</button>
+  </div>
+</body>
+</html>

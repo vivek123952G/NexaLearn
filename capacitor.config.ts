@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   plugins: {
     AdMob: {
-      appId: 'ca-app-pub-2996487725106736~8712669509',
+      appId: 'ca-app-pub-2996487725106736~5645483039',
     },
   },
 };

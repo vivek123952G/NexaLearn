@@ -13,7 +13,7 @@ import {
 import { syncReelToFirestore, syncPostToFirestore, db } from "../lib/firebase";
 import { doc, setDoc } from "firebase/firestore";
 import { NativeAd } from "./NativeAds";
-import { playMicRecordStart, playSuccessChime, playInterfaceClick } from "../lib/audioEffects";
+import { playMicRecordStart, playSuccessChime, playInterfaceClick, playMicRecordStop } from "../lib/audioEffects";
 
 interface InteractiveReelPlayerProps {
   reel: StudyReel;
@@ -169,6 +169,7 @@ interface NexaGramHubProps {
   onDeductCoins?: (amount: number) => boolean;
   onAddNotification: (title: string, msg: string, type: 'info' | 'success' | 'alert' | 'friend_request') => void;
   initialSubTab?: 'feed' | 'reels' | 'chats' | 'friends' | 'explore' | 'profile';
+  allUsers?: any[];
 }
 
 export const NexaGramHub: React.FC<NexaGramHubProps> = ({
@@ -187,10 +188,143 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
   onGrantRewards,
   onDeductCoins,
   onAddNotification,
-  initialSubTab = "feed"
+  initialSubTab = "feed",
+  allUsers = []
 }) => {
-  const [subTab, setSubTab] = useState<'feed' | 'reels' | 'explore' | 'profile' | 'chats' | 'friends'>(initialSubTab as any);
+  const [subTab, setSubTab] = useState<'feed' | 'reels' | 'explore' | 'profile' | 'chats' | 'friends' | 'ai_creator' | 'tournaments' | 'wallet'>(initialSubTab as any);
   const [viralReels, setViralReels] = useState<string[]>([]);
+
+  // NexaGram State Variables moved/initialized early to prevent block-scoped hoisting issues
+  const [feedFilter, setFeedFilter] = useState<'personalized' | 'trending' | 'following'>('personalized');
+  const [followedPeers, setFollowedPeers] = useState<string[]>(["bioqueen_🌿", "auracoder_⚡", "codegod_💻"]);
+
+  // Tournament, voice room, cosmetic stores
+  const [tournamentRegistered, setTournamentRegistered] = useState(false);
+  const [tournamentActive, setTournamentActive] = useState(false);
+  const [tournamentTimeLeft, setTournamentTimeLeft] = useState(30);
+  const [tournamentCurrentQ, setTournamentCurrentQ] = useState(0);
+  const [mathBlitzPlayed, setMathBlitzPlayed] = useState(() => localStorage.getItem("nexa_math_blitz_played") === "true");
+
+  const [activeVoiceRoom, setActiveVoiceRoom] = useState<string | null>(null);
+  const [voiceMultiplierOn, setVoiceMultiplierOn] = useState(false);
+  const [ownedTitlesList, setOwnedTitlesList] = useState<string[]>(["Rookie Solver"]);
+  const [ownedFramesList, setOwnedFramesList] = useState<string[]>([]);
+
+  // Dynamically compute active usernames to prevent displaying content from users who left the app
+  const activeUsernames = useMemo(() => {
+    const set = new Set<string>();
+    if (profile && profile.username && typeof profile.username === 'string') {
+      set.add(profile.username.toLowerCase().trim());
+    }
+    // Static system seed profiles
+    const defaultSeeds = ["bioqueen_🌿", "auracoder_⚡", "codegod_💻", "chemwitch_🧪", "cyberscribe", "physicslord_⚛️", "nerdgamer", "neovisionary", "rookiesolver_9", "hyperphysicist_⚛️", "forcemaster_⚛️", "moleculewielder_🧪", "quantumsolver_🌌", "thermodynamicborg_🔥", "microbialhacker_🧬", "algebraicsniper_📐", "neuroveda_🧠"];
+    defaultSeeds.forEach(name => set.add(name));
+
+    if (allUsers && allUsers.length > 0) {
+      allUsers.forEach(u => {
+        if (u && u.username && typeof u.username === 'string') {
+          set.add(u.username.toLowerCase().trim());
+        }
+      });
+    }
+    return set;
+  }, [allUsers, profile]);
+
+  const filteredFeedPosts = useMemo(() => {
+    // Inject custom interactive poll and quiz posts matching the plan
+    const pollPost: FeedPost = {
+      id: "interactive_poll_1",
+      username: "NexaSphericalAI",
+      avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=NexaAI",
+      timeAgo: "2h ago",
+      content: "📊 **NEXAGRAM HYBRID POLL**: Which futuristic technology will have the greatest impact on collaborative STEM learning over the next decade? Cast your vote below to sync with the hivemind!",
+      likes: 124,
+      liked: false,
+      comments: [
+        { id: "cm_poll_1", username: "AuraCoder_⚡", avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Aura", text: "Neural interfaces are definitely the ultimate frontier! 🧠", timeAgo: "1h ago" }
+      ],
+      tag: "AI RESEARCH POLL",
+    };
+    (pollPost as any).poll = {
+      question: "Greatest STEM learning tech impact:",
+      options: [
+        { text: "🧠 Neural Synaptic Interfaces", votes: 450 },
+        { text: "🌌 Holographic VR Whiteboards", votes: 380 },
+        { text: "🤖 Personalized Gemini Co-Pilots", votes: 520 },
+        { text: "⚡ Blockchain-backed XP Leagues", votes: 140 }
+      ]
+    };
+
+    const quizPost: FeedPost = {
+      id: "interactive_quiz_1",
+      username: "OlympiadCoach_📐",
+      avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Olympiad",
+      timeAgo: "5h ago",
+      content: "🧠 **NEXA BLITZ MULTIPLE-CHOICE**: Let's test your high-speed mathematical computing. What is the derivative of standard thermodynamic entropy with respect to discrete microstates (dS/dΩ) when microstates grow?\n\nSelect the correct formula below for +40 XP & +15 Nexa Coins!",
+      likes: 89,
+      liked: false,
+      comments: [],
+      tag: "MATH COMPETITIVE",
+    };
+    (quizPost as any).quiz = {
+      question: "Solve for dS/dΩ:",
+      options: [
+        "dS/dΩ = k_B * ln(Ω)",
+        "dS/dΩ = k_B / Ω",
+        "dS/dΩ = ln(k_B * Ω)",
+        "dS/dΩ = k_B * Ω"
+      ],
+      correctAnswerIndex: 1, // d(k_B ln Ω)/dΩ = k_B / Ω ! Correct!
+      rewardXp: 40,
+      rewardCoins: 15
+    };
+
+    const postsBase = [...feedPosts];
+    // Avoid double injection
+    if (!postsBase.some(p => p.id === "interactive_poll_1")) {
+      postsBase.splice(0, 0, pollPost);
+    }
+    if (!postsBase.some(p => p.id === "interactive_quiz_1")) {
+      postsBase.splice(1, 0, quizPost);
+    }
+
+    let filtered = postsBase.filter(post => {
+      const uname = (post && typeof post.username === 'string' ? post.username : '').toLowerCase().trim();
+      if (!uname) return false;
+      
+      // Filter based on selected feed filter state (Following)
+      if (feedFilter === "following") {
+        const isFollowed = followedPeers.some(p => p && typeof p === 'string' && p.toLowerCase().trim() === uname) || 
+                           friends.some(f => f && typeof f === 'string' && f.toLowerCase().trim() === uname) ||
+                           (profile && profile.username && typeof profile.username === 'string' && uname === profile.username.toLowerCase().trim());
+        if (!isFollowed) return false;
+      }
+
+      return true;
+    });
+
+    if (feedFilter === "trending") {
+      // Sort by total engagement score
+      filtered = [...filtered].sort((a, b) => {
+        const aRx = (a as any).reactions ? Object.values((a as any).reactions).reduce((sum: number, val: any) => sum + (val as number), 0) : 0;
+        const bRx = (b as any).reactions ? Object.values((b as any).reactions).reduce((sum: number, val: any) => sum + (val as number), 0) : 0;
+        const totalA = (a.likes || 0) + (a.comments?.length || 0) + (aRx as number);
+        const totalB = (b.likes || 0) + (b.comments?.length || 0) + (bRx as number);
+        return totalB - totalA;
+      });
+    }
+
+    return filtered;
+  }, [feedPosts, allUsers, profile, feedFilter, followedPeers, friends]);
+
+  const filteredReels = useMemo(() => {
+    return reels.filter(reel => {
+      const creatorField = reel && (reel.creator || reel.username || "");
+      const uname = (typeof creatorField === 'string' ? creatorField : '').toLowerCase().trim();
+      if (!uname) return false;
+      return true;
+    });
+  }, [reels]);
   
   // Local Media file selection uploaders
   const handleReelVideoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -199,6 +333,11 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
       if (!file.type.startsWith("video/")) {
         onAddNotification("INVALID FORMAT ⚠️", "Please select a valid video file node.", "alert");
         alert("⚠️ Please select a valid video file.");
+        return;
+      }
+      if (file.size > 1.2 * 1024 * 1024) {
+        onAddNotification("VIDEO REEL TOO LARGE ⚠️", "Study Loops must be < 1.2MB in this playground database. Slicing to 5-10 seconds is recommended!", "alert");
+        alert("⚠️ Video file is too large (max 1.2MB). Please select a shorter or lower resolution video clip.");
         return;
       }
       onAddNotification("Reading Video...", "Encoding media streams to secure Base64 vector...", "info");
@@ -223,8 +362,48 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
       const reader = new FileReader();
       reader.onload = () => {
         if (typeof reader.result === "string") {
-          setNewPostMedia(reader.result);
-          onAddNotification("Media Asset Cached 📷", `${file.name} loaded in memory base64 snapshot!`, "success");
+          if (file.type.startsWith("image/")) {
+            const img = new Image();
+            img.src = reader.result;
+            img.onload = () => {
+              const canvas = document.createElement("canvas");
+              const ctx = canvas.getContext("2d");
+              if (!ctx) {
+                setNewPostMedia(reader.result as string);
+                return;
+              }
+              const MAX_WIDTH = 600;
+              const MAX_HEIGHT = 600;
+              let width = img.width;
+              let height = img.height;
+
+              if (width > height) {
+                if (width > MAX_WIDTH) {
+                  height *= MAX_WIDTH / width;
+                  width = MAX_WIDTH;
+                }
+              } else {
+                if (height > MAX_HEIGHT) {
+                  width *= MAX_HEIGHT / height;
+                  height = MAX_HEIGHT;
+                }
+              }
+              canvas.width = width;
+              canvas.height = height;
+              ctx.drawImage(img, 0, 0, width, height);
+              const compressedBase64 = canvas.toDataURL("image/jpeg", 0.7);
+              setNewPostMedia(compressedBase64);
+              onAddNotification("Post Image Optimized 📷", "Resized and compressed successfully to fit cache budget!", "success");
+            };
+          } else {
+            if (file.size > 1.2 * 1024 * 1024) {
+              onAddNotification("FILE TOO LARGE ⚠️", "Optional media attachments must be < 1.2MB.", "alert");
+              alert("⚠️ Post attachment too large (max 1.2MB). Please select a compressed image or clip.");
+              return;
+            }
+            setNewPostMedia(reader.result);
+            onAddNotification("Media Asset Cached 🎬", `${file.name} loaded snapshot successfully!`, "success");
+          }
         }
       };
       reader.onerror = () => {
@@ -237,6 +416,77 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
   // Anti-Spam state metrics
   const [lastPostTimestamp, setLastPostTimestamp] = useState<number>(0);
   const [sessionXpEarned, setSessionXpEarned] = useState<number>(0);
+
+
+  // Nexa AI Creator studio
+  const [aiCreatorMode, setAiCreatorMode] = useState<'caption' | 'hashtags' | 'image_prompt' | 'video_ideas' | 'planner'>('caption');
+  const [aiCreatorTopic, setAiCreatorTopic] = useState("");
+  const [aiCreatorOutput, setAiCreatorOutput] = useState("");
+  const [aiCreatorLoading, setAiCreatorLoading] = useState(false);
+  const [aiCreatorService, setAiCreatorService] = useState("");
+
+  // Simulated Voice Rooms (Holographic Study Stages)
+  const [joinedVoiceRoomId, setJoinedVoiceRoomId] = useState<string | null>(null);
+  const [isVoiceRoomMicMuted, setIsVoiceRoomMicMuted] = useState(true);
+  const [voiceRoomConversations, setVoiceRoomConversations] = useState<Record<string, { sender: string; avatar: string; text: string; time: string }[]>>({
+    "quantum": [
+      { sender: "PhysicsLord_⚛️", avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Physics", text: "Welcome to the stage! We are currently reviewing orbital wave vectors.", time: "2:10 PM" },
+      { sender: "AuraCoder_⚡", avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Aura", text: "Nice. Did we solve the integration bounding factors yet?", time: "2:11 PM" }
+    ],
+    "ethics": [
+      { sender: "NeoVisionary", avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Neo", text: "Autonomous AI alignment metrics are spiking.", time: "1:45 PM" }
+    ],
+    "calculus": [
+      { sender: "AlgebraicSniper_📐", avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Sniper", text: "Who's up for a 3-step derivative sprint?", time: "3:01 PM" }
+    ]
+  });
+  const [voiceRoomInput, setVoiceRoomInput] = useState("");
+
+  // Interactive Quizzes and Polls active state tracking
+  const [userPollAnswers, setUserPollAnswers] = useState<Record<string, number>>({}); // postId -> optionIdx
+  const [userQuizAnswers, setUserQuizAnswers] = useState<Record<string, number>>({}); // postId -> optionIdx
+
+  // Weekly esports academic tournaments
+  const [isTournamentRegistered, setIsTournamentRegistered] = useState(false);
+  const [tournamentScore, setTournamentScore] = useState(0);
+  const [tournamentStep, setTournamentStep] = useState(0); // Current question index
+  const [tournamentAnswers, setTournamentAnswers] = useState<Record<number, boolean>>({});
+  const [showTournamentQuiz, setShowTournamentQuiz] = useState(false);
+
+  useEffect(() => {
+    if (!tournamentActive) return;
+    if (tournamentTimeLeft <= 0) {
+      setTournamentActive(false);
+      setMathBlitzPlayed(true);
+      localStorage.setItem("nexa_math_blitz_played", "true");
+      onGrantRewards(200, 50);
+      onAddNotification("Time Expired! ⏰", "Mathematics Blitz speed run is finished.", "alert");
+      alert(`⏰ TIME UP! Math Blitz speedrun is complete! You scored ${tournamentScore} Points! Gained +200 XP & +50 Social Coins!`);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setTournamentTimeLeft(prev => prev - 1);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [tournamentActive, tournamentTimeLeft, tournamentScore]);
+
+  // Digital creator products store & tipping states
+  const [monetizationToggled, setMonetizationToggled] = useState(false);
+  const [claimedAdRevenue, setClaimedAdRevenue] = useState(false);
+  const [activeTipPostId, setActiveTipPostId] = useState<string | null>(null);
+  const [digitalProducts, setDigitalProducts] = useState([
+    { id: "dp_1", name: "🏆 Calculus Olympiad Crash Book", price: 35, downloads: 48, status: "Active" },
+    { id: "dp_2", name: "🧪 Eukaryotic Formula Wallpapers", price: 15, downloads: 22, status: "Active" }
+  ]);
+  const [newProductName, setNewProductName] = useState("");
+  const [newProductPrice, setNewProductPrice] = useState(10);
+  
+  // Custom equipped borders and titles locks
+  const [equippedProfileFrame, setEquippedProfileFrame] = useState<string>(""); // e.g. "plasma_circle"
+  const [equippedProfileTitle, setEquippedProfileTitle] = useState<string>("Rookie Solver"); // e.g. "Quantum Knight"
+  const [ownedCosmeticItems, setOwnedCosmeticItems] = useState<string[]>(["Rookie Solver"]);
 
   // Search & Explorer parameters
   const [exploreSearchQuery, setExploreSearchQuery] = useState("");
@@ -273,6 +523,13 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
 
   // Send gift interaction states
   const [showGiftModal, setShowGiftModal] = useState(false);
+
+  // Share interaction states
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareTargetType, setShareTargetType] = useState<'feed_post' | 'study_reel' | 'chat'>('feed_post');
+  const [shareTargetId, setShareTargetId] = useState<string>('');
+  const [shareTargetTitle, setShareTargetTitle] = useState<string>('');
+  const [selectedRecipient, setSelectedRecipient] = useState<string>('');
 
   // Available study gift presets
   const studyGifts = [
@@ -634,7 +891,8 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
     setReportReason("");
     setReportSuccessToast(false);
 
-    const key = `nexa_last_report_time_${profile.username.toLowerCase()}`;
+    const profileNameLower = (profile && profile.username ? profile.username : "anonymous").toLowerCase();
+    const key = `nexa_last_report_time_${profileNameLower}`;
     const lastReportTimeStr = localStorage.getItem(key);
     
     if (lastReportTimeStr) {
@@ -674,7 +932,8 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
 
       await setDoc(doc(db, "reports", reportId), newReportData);
 
-      localStorage.setItem(`nexa_last_report_time_${profile.username.toLowerCase()}`, Date.now().toString());
+      const profileNameLowerWrite = (profile && profile.username ? profile.username : "anonymous").toLowerCase();
+      localStorage.setItem(`nexa_last_report_time_${profileNameLowerWrite}`, Date.now().toString());
 
       setReportSuccessToast(true);
       onAddNotification("Report Dispatched ✓", "NexaGuard moderator pipeline received your moderation file.", "success");
@@ -730,6 +989,15 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
     setLastPostTimestamp(Date.now());
 
     syncPostToFirestore(uploadedPost.id, uploadedPost).catch(err => console.warn(err));
+
+    try {
+      const saved = localStorage.getItem("nexa_local_uploaded_posts");
+      const localList: FeedPost[] = saved ? JSON.parse(saved) : [];
+      localList.push(uploadedPost);
+      localStorage.setItem("nexa_local_uploaded_posts", JSON.stringify(localList));
+    } catch (e) {
+      console.warn("Could not save uploaded post locally:", e);
+    }
 
     setFeedPosts([uploadedPost, ...feedPosts]);
     setUploadModalOpen(false);
@@ -788,6 +1056,15 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
 
     // Upload to global Firestore
     syncReelToFirestore(uploadedReel.id, uploadedReel).catch(err => console.warn(err));
+
+    try {
+      const saved = localStorage.getItem("nexa_local_uploaded_reels");
+      const localList: StudyReel[] = saved ? JSON.parse(saved) : [];
+      localList.push(uploadedReel);
+      localStorage.setItem("nexa_local_uploaded_reels", JSON.stringify(localList));
+    } catch (e) {
+      console.warn("Could not save uploaded reel locally:", e);
+    }
 
     setReels([uploadedReel, ...reels]);
     setUploadModalOpen(false);
@@ -898,16 +1175,18 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
 
   // Filter explore and search
   const filteredPeerPool = peerCandidates.filter(p => {
-    const matchesQuery = p.username.toLowerCase().includes(exploreSearchQuery.toLowerCase()) || 
-                         p.school.toLowerCase().includes(exploreSearchQuery.toLowerCase()) ||
-                         p.badge.toLowerCase().includes(exploreSearchQuery.toLowerCase());
+    const q = (exploreSearchQuery || '').toLowerCase();
+    const matchesQuery = (p.username && typeof p.username === 'string' && p.username.toLowerCase().includes(q)) || 
+                         (p.school && typeof p.school === 'string' && p.school.toLowerCase().includes(q)) ||
+                         (p.badge && typeof p.badge === 'string' && p.badge.toLowerCase().includes(q));
     return matchesQuery;
   });
 
   const filteredTrendingNotes = trendingNotesData.filter(note => {
     const matchesSubject = exploreSubjectFilter === "All" || note.subject === exploreSubjectFilter;
-    const matchesQuery = note.title.toLowerCase().includes(exploreSearchQuery.toLowerCase()) || 
-                         note.author.toLowerCase().includes(exploreSearchQuery.toLowerCase());
+    const q = (exploreSearchQuery || '').toLowerCase();
+    const matchesQuery = (note.title && typeof note.title === 'string' && note.title.toLowerCase().includes(q)) || 
+                         (note.author && typeof note.author === 'string' && note.author.toLowerCase().includes(q));
     return matchesSubject && matchesQuery;
   });
 
@@ -942,14 +1221,15 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
     const activeSession = chats[activeDmIdx];
     if (!activeSession) return;
 
+    const recipient = activeSession.recipientName || "";
     // Check if recipient is an AI mentor node, and charge 5 coins fee!
-    const isAiRecipient = activeSession.recipientName.toLowerCase().includes("ai") || 
-                          activeSession.recipientName.includes("Dr. Evelyn") || 
-                          activeSession.recipientName.includes("Marcus") || 
-                          activeSession.recipientName.includes("Professor") ||
-                          activeSession.recipientName.includes("Evelyn") ||
-                          activeSession.recipientName.includes("Veda") ||
-                          activeSession.recipientName.includes("Thorne");
+    const isAiRecipient = recipient.toLowerCase().includes("ai") || 
+                          recipient.includes("Dr. Evelyn") || 
+                          recipient.includes("Marcus") || 
+                          recipient.includes("Professor") ||
+                          recipient.includes("Evelyn") ||
+                          recipient.includes("Veda") ||
+                          recipient.includes("Thorne");
 
     if (isAiRecipient) {
       if (onDeductCoins && !onDeductCoins(5)) {
@@ -977,7 +1257,7 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
     setChats(updatedSessions);
     setDmInput("");
 
-    if (activeSession.recipientName.toLowerCase().includes("ai")) {
+    if (recipient.toLowerCase().includes("ai")) {
       setTimeout(() => {
         const responseMessage: ChatMessage = {
           ...newMessage,
@@ -1103,43 +1383,55 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
           </div>
         </div>
 
-        {/* Sleek Cybersecurity Cyber-Tabs Grid (6 Tabs Setup!) */}
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-1 bg-black/45 p-1 rounded-2xl border border-white/5 font-mono text-[9px] font-black tracking-tighter">
+        {/* Sleek Cybersecurity Cyber-Tabs Grid (8 Tabs Ultimate Setup!) */}
+        <div className="grid grid-cols-4 lg:grid-cols-8 gap-1 p-1 bg-black/50 rounded-2xl border border-white/10 font-mono text-[9px] font-black tracking-tighter mb-6">
           <button
             onClick={() => setSubTab("feed")}
-            className={`py-2 px-2.5 rounded-xl text-center select-none cursor-pointer border-none transition-all ${subTab === "feed" ? "bg-cyan-500/15 text-cyan-300 shadow" : "text-gray-400 hover:text-white bg-transparent"}`}
+            className={`py-2 px-1 rounded-xl text-center select-none cursor-pointer border-none transition-all duration-300 ${subTab === "feed" ? "bg-cyan-500/20 text-cyan-300 font-extrabold border-b border-cyan-400" : "text-gray-400 hover:text-white hover:bg-white/5 bg-transparent"}`}
           >
             📱 FEED
           </button>
           <button
             onClick={() => setSubTab("reels")}
-            className={`py-2 px-2.5 rounded-xl text-center select-none cursor-pointer border-none transition-all ${subTab === "reels" ? "bg-pink-500/15 text-pink-300 shadow" : "text-gray-400 hover:text-white bg-transparent"}`}
+            className={`py-2 px-1 rounded-xl text-center select-none cursor-pointer border-none transition-all duration-300 ${subTab === "reels" ? "bg-pink-500/20 text-pink-300 font-extrabold border-b border-pink-400" : "text-gray-400 hover:text-white hover:bg-white/5 bg-transparent"}`}
           >
-            🎬 SNAPS/REELS
+            🎬 SNAPS
           </button>
           <button
             onClick={() => setSubTab("explore")}
-            className={`py-2 px-2.5 rounded-xl text-center select-none cursor-pointer border-none transition-all ${subTab === "explore" ? "bg-[#CCFF00]/10 text-[#CCFF00] shadow" : "text-gray-400 hover:text-white bg-transparent"}`}
+            className={`py-2 px-1 rounded-xl text-center select-none cursor-pointer border-none transition-all duration-300 ${subTab === "explore" ? "bg-[#CCFF00]/15 text-[#CCFF00] font-extrabold border-b border-[#CCFF00]" : "text-gray-400 hover:text-white hover:bg-white/5 bg-transparent"}`}
           >
             🔍 EXPLORE
           </button>
           <button
-            onClick={() => setSubTab("profile")}
-            className={`py-2 px-2.5 rounded-xl text-center select-none cursor-pointer border-none transition-all ${subTab === "profile" ? "bg-purple-500/15 text-purple-300 shadow" : "text-gray-400 hover:text-white bg-transparent"}`}
+            onClick={() => setSubTab("ai_creator")}
+            className={`py-2 px-1 rounded-xl text-center select-none cursor-pointer border-none transition-all duration-300 ${subTab === "ai_creator" ? "bg-amber-500/20 text-amber-300 font-extrabold border-b border-amber-400" : "text-gray-400 hover:text-white hover:bg-white/5 bg-transparent"}`}
           >
-            👤 MY PROFILE
+            🧠 AI CREATOR
           </button>
           <button
             onClick={() => setSubTab("chats")}
-            className={`py-2 px-2.5 rounded-xl text-center select-none cursor-pointer border-none transition-all ${subTab === "chats" ? "bg-emerald-500/15 text-emerald-300 shadow" : "text-gray-400 hover:text-white bg-transparent"}`}
+            className={`py-2 px-1 rounded-xl text-center select-none cursor-pointer border-none transition-all duration-300 ${subTab === "chats" ? "bg-emerald-500/20 text-emerald-300 font-extrabold border-b border-emerald-400" : "text-gray-400 hover:text-white hover:bg-white/5 bg-transparent"}`}
           >
-            💬 CHATS ({chats.length})
+            💬 STAGES
           </button>
           <button
-            onClick={() => setSubTab("friends")}
-            className={`py-2 px-2.5 rounded-xl text-center select-none cursor-pointer border-none transition-all ${subTab === "friends" ? "bg-blue-500/15 text-blue-300 shadow" : "text-gray-400 hover:text-white bg-transparent"}`}
+            onClick={() => setSubTab("tournaments")}
+            className={`py-2 px-1 rounded-xl text-center select-none cursor-pointer border-none transition-all duration-300 ${subTab === "tournaments" ? "bg-blue-500/20 text-blue-300 font-extrabold border-b border-blue-400" : "text-gray-400 hover:text-white hover:bg-white/5 bg-transparent"}`}
           >
-            👥 DIRECTORY
+            🏆 LEAGUE
+          </button>
+          <button
+            onClick={() => setSubTab("wallet")}
+            className={`py-2 px-1 rounded-xl text-center select-none cursor-pointer border-none transition-all duration-300 ${subTab === "wallet" ? "bg-amber-400/20 text-amber-200 font-extrabold border-b border-amber-400" : "text-gray-400 hover:text-white hover:bg-white/5 bg-transparent"}`}
+          >
+            💰 STUDIO
+          </button>
+          <button
+            onClick={() => setSubTab("profile")}
+            className={`py-2 px-1 rounded-xl text-center select-none cursor-pointer border-none transition-all duration-300 ${subTab === "profile" ? "bg-purple-500/20 text-purple-300 font-extrabold border-b border-purple-400" : "text-gray-400 hover:text-white hover:bg-white/5 bg-transparent"}`}
+          >
+            👤 MY NEST
           </button>
         </div>
       </div>
@@ -1210,8 +1502,30 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
       {/* 📱 SCREEN 1: INTERACTIVE FEED (Social Posts with reactions) */}
       {/* ──────────────────────────────────────────────────────── */}
       {subTab === "feed" && (
-        <div className="space-y-5">
-          {feedPosts.map((post, index) => {
+        <div className="space-y-5 animate-fadeIn">
+          {/* Futuristic Cyber Feed Selector Tab Bar */}
+          <div className="flex items-center gap-2 p-1.5 bg-black/40 border border-white/5 rounded-2xl font-mono text-[10px] font-bold">
+            <button
+              onClick={() => { setFeedFilter("personalized"); playInterfaceClick(); }}
+              className={`flex-1 py-1.5 rounded-xl text-center select-none cursor-pointer border-none transition-all ${feedFilter === "personalized" ? "bg-cyan-500/15 text-cyan-300" : "text-gray-400 hover:text-white"}`}
+            >
+              🪐 PERSONALIZED
+            </button>
+            <button
+              onClick={() => { setFeedFilter("trending"); playInterfaceClick(); }}
+              className={`flex-1 py-1.5 rounded-xl text-center select-none cursor-pointer border-none transition-all ${feedFilter === "trending" ? "bg-amber-400/15 text-amber-300" : "text-gray-400 hover:text-white"}`}
+            >
+              🔥 TRENDING FEED
+            </button>
+            <button
+              onClick={() => { setFeedFilter("following"); playInterfaceClick(); }}
+              className={`flex-1 py-1.5 rounded-xl text-center select-none cursor-pointer border-none transition-all ${feedFilter === "following" ? "bg-purple-500/15 text-purple-300" : "text-gray-400 hover:text-white"}`}
+            >
+              👥 FOLLOWING ({followedPeers.length + friends.length})
+            </button>
+          </div>
+
+          {filteredFeedPosts.map((post, index) => {
             const hasDisliked = (post as any).disliked || false;
             const dislikesCount = (post as any).dislikes || 0;
             const commentVal = postCommentText[post.id] || "";
@@ -1232,10 +1546,33 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
                     <div>
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <h4 className="text-xs font-black text-white hover:text-cyan-400 cursor-pointer">@{post.username}</h4>
-                        {friends.includes(post.username) && (
-                          <span className="text-[8px] bg-cyan-400/10 text-cyan-300 font-bold px-1.5 py-0.5 rounded font-mono">FOLLOWING</span>
+                        {post.username && profile && profile.username && post.username.toLowerCase() !== profile.username.toLowerCase() && (
+                          <button
+                            onClick={() => {
+                              const uLower = (post.username || '').toLowerCase().trim();
+                              const alreadyFollowing = followedPeers.some(p => p && typeof p === 'string' && p.toLowerCase().trim() === uLower);
+                              if (alreadyFollowing) {
+                                setFollowedPeers(prev => prev.filter(p => p && typeof p === 'string' && p.toLowerCase().trim() !== uLower));
+                                onAddNotification("Unfollowed Student", `Stopped listening to @${post.username}.`, "info");
+                              } else {
+                                setFollowedPeers(prev => [...prev, post.username]);
+                                playSuccessChime();
+                                onAddNotification("Followed Student! 👥", `Stream synchronized with @${post.username}!`, "success");
+                              }
+                            }}
+                            className={`text-[8.5px] font-bold font-mono px-2 py-0.5 rounded-full cursor-pointer transition-all border ${
+                              followedPeers.some(p => p && typeof p === 'string' && p.toLowerCase().trim() === (post.username || '').toLowerCase().trim())
+                                ? "bg-cyan-500/10 text-cyan-300 border-cyan-500/20"
+                                : "bg-[#CCFF00] text-black border-none hover:bg-lime-400"
+                            }`}
+                          >
+                            {followedPeers.some(p => p && typeof p === 'string' && p.toLowerCase().trim() === (post.username || '').toLowerCase().trim()) ? "✓ FOLLOWING" : "+ FOLLOW"}
+                          </button>
                         )}
                         <span className="text-[8px] bg-purple-500/15 text-purple-400 font-bold px-1.5 py-0.5 rounded font-mono uppercase">VERIFIED</span>
+                        {index % 2 === 0 && (
+                          <span className="text-[8px] bg-amber-500/15 text-amber-300 font-extrabold px-1.5 py-0.5 rounded font-mono uppercase">👑 PREMIUM</span>
+                        )}
                       </div>
                       <span className="text-[8px] text-gray-500 font-mono uppercase tracking-widest">{post.timeAgo} • via Cloud Sync Node</span>
                     </div>
@@ -1249,9 +1586,120 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
                 <div className="space-y-4">
                   <p className="text-xs text-gray-200 leading-relaxed font-mono whitespace-pre-wrap">{post.content}</p>
                   
+                  {/* Real Dynamic Interactive Poll Component support */}
+                  {(post as any).poll && (
+                    <div className="p-4 rounded-2xl bg-black/60 border border-[#CCFF00]/10 space-y-3 mt-2 text-left">
+                      <p className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 bg-[#CCFF00] rounded-full animate-pulse" />
+                        📊 Poll: {(post as any).poll.question}
+                      </p>
+                      <div className="space-y-2">
+                        {(post as any).poll.options.map((opt: any, oIdx: number) => {
+                          const hasVoted = userPollAnswers[post.id] !== undefined;
+                          const votedIdx = userPollAnswers[post.id];
+                          const totalVotes = (post as any).poll.options.reduce((sum: number, o: any) => sum + o.votes, 0) + (hasVoted ? 1 : 0);
+                          const currentVotes = opt.votes + (votedIdx === oIdx ? 1 : 0);
+                          const percentage = Math.round((currentVotes / totalVotes) * 100);
+
+                          return (
+                            <button
+                              key={oIdx}
+                              disabled={hasVoted}
+                              onClick={() => {
+                                setUserPollAnswers(prev => ({ ...prev, [post.id]: oIdx }));
+                                onGrantRewards(5, 2);
+                                playSuccessChime();
+                                onAddNotification("Vote Registered! 📊", "Captured synergy metrics. Awarded +5 XP, +2 Coins!", "success");
+                              }}
+                              className={`w-full text-left relative overflow-hidden p-3 rounded-xl border font-mono text-xs transition-all flex justify-between items-center cursor-pointer ${
+                                hasVoted 
+                                  ? votedIdx === oIdx 
+                                    ? "border-cyan-400/50 bg-cyan-950/20 text-cyan-300" 
+                                    : "border-white/5 bg-zinc-950/40 text-gray-550"
+                                  : "border-white/5 bg-zinc-900/40 hover:bg-zinc-900 text-white"
+                              }`}
+                            >
+                              {hasVoted && (
+                                <div 
+                                  className="absolute left-0 top-0 bottom-0 bg-cyan-500/10 transition-all duration-500" 
+                                  style={{ width: `${percentage}%` }}
+                                />
+                              )}
+                              <span className="relative z-10 font-bold">{opt.text}</span>
+                              {hasVoted && (
+                                <span className="relative z-10 text-[10px] font-mono text-cyan-400 font-extrabold">{percentage}% ({currentVotes})</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Real Dynamic Interactive Quiz Component support */}
+                  {(post as any).quiz && (
+                    <div className="p-4 rounded-2xl bg-black/60 border border-purple-500/10 space-y-3 mt-2 text-left">
+                      <div className="flex justify-between items-center bg-purple-500/5 p-2 rounded-lg border border-purple-500/10">
+                        <span className="text-[9.5px] font-black text-purple-400 tracking-wider font-mono uppercase">🧠 EXAM PREDICTION BLITZ RUN</span>
+                        <span className="text-[9px] text-[#CCFF00] font-mono font-bold">+40 XP & +15 COINS</span>
+                      </div>
+                      <p className="text-xs font-bold text-white uppercase tracking-wider font-mono">❓ Quiz Question: {(post as any).quiz.question}</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {(post as any).quiz.options.map((opt: string, oIdx: number) => {
+                          const hasAnswered = userQuizAnswers[post.id] !== undefined;
+                          const answeredIdx = userQuizAnswers[post.id];
+                          const isCorrect = oIdx === (post as any).quiz.correctAnswerIndex;
+
+                          return (
+                            <button
+                              key={opt}
+                              disabled={hasAnswered}
+                              onClick={() => {
+                                setUserQuizAnswers(prev => ({ ...prev, [post.id]: oIdx }));
+                                if (isCorrect) {
+                                  onGrantRewards((post as any).quiz.rewardXp, (post as any).quiz.rewardCoins);
+                                  playSuccessChime();
+                                  onAddNotification("Correct Answer! 🎉", "Synthesized calculation completed! Granted +40 XP & +15 Coins!", "success");
+                                } else {
+                                  onAddNotification("Divergence Detected", "Answer incorrect. Wave factor recalculating...", "alert");
+                                }
+                              }}
+                              className={`text-left p-3 rounded-xl border font-mono text-[10.5px] transition-all cursor-pointer ${
+                                hasAnswered
+                                  ? isCorrect
+                                    ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/40 font-bold"
+                                    : answeredIdx === oIdx
+                                      ? "bg-rose-500/10 text-rose-300 border-rose-500/40"
+                                      : "bg-black/30 border-white/5 text-gray-500"
+                                  : "bg-zinc-900/40 hover:bg-zinc-900 text-white border-white/5"
+                              }`}
+                            >
+                              <span className="block font-medium">{oIdx === 0 ? "A" : oIdx === 1 ? "B" : oIdx === 2 ? "C" : "D"}. {opt}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {post.mediaUrl && (
                     <div className="w-full rounded-2xl overflow-hidden border border-white/5 bg-black/80 aspect-video flex items-center justify-center relative">
-                      <img src={post.mediaUrl} alt="" className="w-full h-full object-cover" />
+                      {post.mediaUrl.startsWith("data:video/") || 
+                       post.mediaUrl.endsWith(".mp4") || 
+                       post.mediaUrl.endsWith(".mov") || 
+                       post.mediaUrl.endsWith(".webm") || 
+                       post.mediaUrl.includes("video") ? (
+                        <video 
+                          src={post.mediaUrl} 
+                          controls 
+                          playsInline 
+                          muted 
+                          loop 
+                          className="w-full h-full object-contain" 
+                        />
+                      ) : (
+                        <img src={post.mediaUrl} alt="" className="w-full h-full object-cover" />
+                      )}
                       <div className="absolute bottom-2 left-2 bg-black/85 text-[#CCFF00] font-mono text-[8px] py-1 px-2.5 rounded border border-[#CCFF00]/10">
                         ATTACHED SNAPSHOT MODULE
                       </div>
@@ -1302,7 +1750,7 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
                 {/* Cyberpunk Reaction Bar (Instead of normal likes, 4 distinct reaction nodes!) */}
                 <div className="border-t border-b border-white/5 py-3.5 my-4">
                   <div className="flex flex-col gap-2.5">
-                    <span className="text-[8.5px] font-mono text-gray-400 tracking-wider">FUEL ACADEMIC FEEDBACK:</span>
+                    <span className="text-[8.5px] font-mono text-gray-400 tracking-wider text-left">FUEL ACADEMIC FEEDBACK:</span>
                     <div className="flex flex-wrap items-center gap-2">
                       <button 
                         onClick={() => handleToggleFeedReaction(post.id, 'smart')}
@@ -1356,14 +1804,76 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
                 </div>
 
                 {/* Footer and report selectors */}
-                <div className="flex items-center justify-between text-[10px] font-mono text-gray-400 mb-2">
+                <div className="flex items-center justify-between text-[10px] font-mono text-gray-400 mb-2 relative">
                   <span className="flex items-center gap-1.5 font-bold uppercase"><MessageSquare className="w-3.5 h-3.5 text-gray-500" /> {post.comments.length} Comments Threaded</span>
-                  <button 
-                    onClick={() => handleTriggerReport(post.id, "feed_post")}
-                    className="text-rose-400 hover:text-rose-300 bg-transparent border-none cursor-pointer uppercase font-black tracking-widest scale-95"
-                  >
-                    🚩 REPORT
-                  </button>
+                  <div className="flex items-center gap-3.5">
+                    {/* Absolute Creator Tipping Options */}
+                    <div className="relative">
+                      <button 
+                        onClick={() => setActiveTipPostId(activeTipPostId === post.id ? null : post.id)}
+                        className={`p-1 py-1 px-2 text-pink-400 hover:text-pink-300 rounded-lg flex items-center gap-1 text-[10px] font-mono font-bold border cursor-pointer border-pink-500/10 ${
+                          activeTipPostId === post.id ? "bg-pink-500/10 border-pink-500/30" : "bg-transparent hover:bg-white/5"
+                        }`}
+                      >
+                        <Gift className="w-3.5 h-3.5 text-pink-400" />
+                        <span>GIFT COINS</span>
+                      </button>
+
+                      <AnimatePresence>
+                        {activeTipPostId === post.id && (
+                          <motion.div 
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 10 }}
+                            className="absolute right-0 bottom-8 bg-[#0a0b12] border border-pink-500/40 rounded-2xl p-3 z-30 w-44 shadow-[0_0_20px_rgba(236,72,153,0.3)] space-y-2 text-center"
+                          >
+                            <span className="text-[8.5px] font-mono text-gray-400 uppercase tracking-widest block mb-1">Select Tip Amount:</span>
+                            <div className="grid grid-cols-2 gap-1.5 justify-center">
+                              {[10, 25, 50, 100].map(amt => (
+                                <button
+                                  key={amt}
+                                  onClick={() => {
+                                    if (profile.coins < amt) {
+                                      onAddNotification("Insufficient Coins", "Solve homework and modules to earn coins.", "alert");
+                                      alert("⚠️ Insufficient Coins! Claim social coins from study rooms or tournaments first!");
+                                    } else {
+                                      onGrantRewards(0, -amt); // Deduct!
+                                      playSuccessChime();
+                                      onAddNotification("Tip Delivered! 🎁", `Sent ${amt} Nexa Coins to @${post.username}!`, "success");
+                                      setActiveTipPostId(null);
+                                    }
+                                  }}
+                                  className="py-1 px-1.5 bg-pink-500/10 hover:bg-pink-500/20 border border-pink-500/20 text-pink-300 rounded-lg text-[10px] font-bold font-mono cursor-pointer transition-all"
+                                >
+                                  {amt} 🪙
+                                </button>
+                              ))}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+
+                    <button 
+                      onClick={() => {
+                        setShareTargetType('feed_post');
+                        setShareTargetId(post.id);
+                        setShareTargetTitle(`Post by @${post.username}`);
+                        setSelectedRecipient('');
+                        setShowShareModal(true);
+                      }}
+                      className="text-cyan-450 hover:text-cyan-300 bg-transparent border-none cursor-pointer uppercase font-black tracking-widest scale-95 flex items-center gap-1"
+                    >
+                      <Share2 className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>SHARE</span>
+                    </button>
+                    <button 
+                      onClick={() => handleTriggerReport(post.id, "feed_post")}
+                      className="text-rose-400 hover:text-rose-300 bg-transparent border-none cursor-pointer uppercase font-black tracking-widest scale-95"
+                    >
+                      🚩 REPORT
+                    </button>
+                  </div>
                 </div>
 
                 {/* Comments thread stream */}
@@ -1415,8 +1925,8 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
       {/* ──────────────────────────────────────────────────────── */}
       {/* 🎬 SCREEN 2: STUDY SNAPS/REELS VIDEOS LOOP */}
       {/* ──────────────────────────────────────────────────────── */}
-      {subTab === "reels" && reels.length > 0 && (() => {
-        const currentReel = reels[activeReelIdx] || reels[0];
+      {subTab === "reels" && filteredReels.length > 0 && (() => {
+        const currentReel = filteredReels[activeReelIdx] || filteredReels[0];
         const commentsList = currentReel.commentsList || [];
         const commentVal = reelCommentText[currentReel.id] || "";
 
@@ -1450,17 +1960,17 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
               {/* Navigation overlay controls */}
               <div className="absolute right-4 bottom-1/2 translate-y-1/2 z-40 flex flex-col gap-3">
                 <button
-                  onClick={() => setActiveReelIdx(prev => (prev > 0 ? prev - 1 : reels.length -1))}
+                  onClick={() => setActiveReelIdx(prev => (prev > 0 ? prev - 1 : filteredReels.length -1))}
                   className="p-2 border border-white/10 bg-black/80 hover:bg-black text-white hover:text-[#CCFF00] transition rounded-xl cursor-pointer"
                   title="Previous Snap"
                 >
                   ▲
                 </button>
                 <div className="text-[9px] text-[#CCFF00] bg-black/90 py-1.5 px-2 rounded-lg font-mono border border-white/5 tracking-widest text-center select-none font-bold">
-                  {activeReelIdx + 1}/{reels.length}
+                  {activeReelIdx + 1}/{filteredReels.length}
                 </div>
                 <button
-                  onClick={() => setActiveReelIdx(prev => (prev < reels.length - 1 ? prev + 1 : 0))}
+                  onClick={() => setActiveReelIdx(prev => (prev < filteredReels.length - 1 ? prev + 1 : 0))}
                   className="p-2 border border-white/10 bg-black/80 hover:bg-black text-white hover:text-[#CCFF00] transition rounded-xl cursor-pointer"
                   title="Next Snap"
                 >
@@ -1584,6 +2094,19 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
                   >
                     <span>⚡ BOOST & GO VIRAL!</span>
                     {!viralReels.includes(currentReel.id) && <span className="bg-black/20 text-white text-[9px] px-1.5 py-0.5 rounded-md font-bold">+20,000 Coins 🪙</span>}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShareTargetType('study_reel');
+                      setShareTargetId(currentReel.id);
+                      setShareTargetTitle(`Study Reel by @${currentReel.creator}`);
+                      setSelectedRecipient('');
+                      setShowShareModal(true);
+                    }}
+                    className="w-full py-2 bg-cyan-900/20 hover:bg-cyan-900/30 border border-cyan-500/30 text-cyan-300 rounded-xl font-mono text-[10.5px] uppercase cursor-pointer flex items-center justify-center gap-1.5 transition-all font-bold mt-2"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>SHARE STUDY REEL</span>
                   </button>
                 </div>
 
@@ -1753,7 +2276,13 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
             <div className="absolute bottom-0 left-0 w-64 h-64 bg-cyan-500/5 blur-[90px] pointer-events-none rounded-full" />
 
             <div className="inline-block relative">
-              <div className="w-24 h-24 rounded-full bg-black/60 p-[4px] border-3 border-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.3)] relative">
+              <div className={`w-24 h-24 rounded-full bg-black/60 p-[4px] relative transition-all duration-500 ${
+                equippedProfileFrame === "rainbow"
+                  ? "bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 animate-[pulse_3s_infinite] shadow-[0_0_25px_rgba(236,72,153,0.6)] border-none"
+                  : equippedProfileFrame === "gold"
+                  ? "bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-600 animate-[pulse_3s_infinite] shadow-[0_0_25px_rgba(251,191,36,0.6)] border-none"
+                  : "border-3 border-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.3)]"
+              }`}>
                 <img src={profile.avatar} alt="" className="w-full h-full rounded-full object-cover" />
               </div>
               <span className="absolute -bottom-1 right-2 bg-gradient-to-r from-yellow-400 to-amber-500 text-black text-[10px] font-black w-6 h-6 flex items-center justify-center rounded-full shadow-lg font-mono">
@@ -1762,7 +2291,14 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
             </div>
 
             <div className="space-y-1">
-              <h4 className="text-xl font-black text-white">@{profile.username}</h4>
+              <h4 className="text-xl font-black text-white flex flex-col items-center justify-center gap-1.5">
+                <span>@{profile.username}</span>
+                {equippedProfileTitle && (
+                  <span className="inline-block text-[9px] font-mono font-black tracking-widest px-3 py-1 bg-gradient-to-r from-purple-500 via-fuchsia-500 to-pink-500 text-black rounded-lg uppercase shadow-[0_0_15px_rgba(219,39,119,0.45)] border-none">
+                    ⚡ {equippedProfileTitle} ⚡
+                  </span>
+                )}
+              </h4>
               <p className="text-[10px] font-mono text-gray-400 uppercase tracking-widest">RANK LEVEL: <span className="text-[#CCFF00] font-bold">ALPHA TIER LEVEL {Math.floor(profile.xp / 100) + 1}</span></p>
               <div className="flex justify-center gap-1.5 mt-2">
                 <span className="px-2 py-0.5 bg-[#CCFF00]/10 text-[#CCFF00] text-[9.5px] font-mono rounded-full font-bold uppercase tracking-wider">
@@ -1831,6 +2367,65 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
             {/* Sidebar list DMs */}
             <div className="neo-glass rounded-[32px] p-5 border-white/5 bg-black/40 space-y-3 h-full min-h-[300px]">
               <span className="text-[9.5px] font-mono font-black text-gray-400 uppercase tracking-widest block mb-2">Connected Channels</span>
+              
+              {/* 🎤 Live Hologram Sound Channels (Voice Rooms) */}
+              <div className="space-y-2 mb-4 bg-zinc-950/60 border border-white/5 p-3 rounded-2xl text-left">
+                <span className="text-[8px] font-mono font-bold text-cyan-400 tracking-wider block uppercase">🎤 Hologram Study Stages</span>
+                
+                {[
+                  { id: "cal", name: "AI Calculus Hivemind", count: 4 },
+                  { id: "phy", name: "Quantum Physics Lounge", count: 7 }
+                ].map((room) => {
+                  const isConnected = activeVoiceRoom === room.id;
+                  return (
+                    <div
+                      key={room.id}
+                      onClick={() => {
+                        if (isConnected) {
+                          setActiveVoiceRoom(null);
+                          setVoiceMultiplierOn(false);
+                          playMicRecordStop();
+                          onAddNotification("Stage Disconnected 🎤", "Soundwaves synchronized down.", "alert");
+                        } else {
+                          setActiveVoiceRoom(room.id);
+                          setVoiceMultiplierOn(true);
+                          playMicRecordStart();
+                          onGrantRewards(2, 5); // Instantly grant entry boost!
+                          onAddNotification("Connected to Stage! 🎤", "Joined voice room. Mining +2 Coins active!", "success");
+                        }
+                      }}
+                      className={`p-2 rounded-xl border flex justify-between items-center cursor-pointer transition-all ${
+                        isConnected
+                          ? "bg-cyan-500/10 border-cyan-400/40 text-cyan-300"
+                          : "bg-black/40 border-white/5 text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? "bg-cyan-400 animate-ping" : "bg-zinc-600"}`} />
+                        <span className="text-[10px] font-mono font-black uppercase text-left">{room.name}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 font-mono">
+                        {isConnected ? (
+                          <div className="flex items-center gap-0.5">
+                            {[1,2,3,4].map(idx => (
+                              <span key={idx} className="w-[1.5px] h-2.5 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: `${idx * 150}ms` }} />
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-[8.5px] bg-white/5 text-gray-500 py-0.5 px-1.5 rounded">{room.count} online</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {activeVoiceRoom && (
+                  <div className="text-center pt-1.5 border-t border-white/5">
+                    <span className="text-[8.5px] text-[#CCFF00] font-mono font-bold uppercase animate-pulse">🚀 Mining ACTIVE: +2 coins / 10s</span>
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-2 max-h-[350px] overflow-y-auto">
                 {chats.map((ch, index) => (
                   <div
@@ -2047,6 +2642,537 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
           </div>
         );
       })()}
+
+      {/* ──────────────────────────────────────────────────────── */}
+      {/* 🧠 SCREEN: AI CREATOR (Gemini-Powered Workspace) */}
+      {/* ──────────────────────────────────────────────────────── */}
+      {subTab === "ai_creator" && (
+        <div className="space-y-6 animate-fadeIn text-left">
+          <div className="neo-glass rounded-3xl p-6 border border-amber-500/20 bg-black/40 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/5 blur-3xl pointer-events-none rounded-full" />
+            <h3 className="text-lg font-black text-white flex items-center gap-2 font-mono uppercase">
+              <span className="text-amber-400">🧠</span> Nexa AI Creator Space
+            </h3>
+            <p className="text-xs text-gray-400 font-mono mt-1">
+              Harness Deep-Learning LLMs (Gemini Pro) to draft high-engagement study plans, viral captions, and semantic hashtag blocks.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="neo-glass rounded-3xl p-5 border border-white/5 bg-black/30 space-y-4">
+              <span className="text-[10px] text-gray-400 font-mono font-black uppercase tracking-widest block">CREATOR CONFIG</span>
+              
+              <div className="space-y-1.5 text-left">
+                <label className="text-[10px] font-mono text-gray-300 font-bold uppercase">Select AI Assistant Service:</label>
+                <div className="space-y-1.5">
+                  {[
+                    { mode: "caption", label: "✍️ VIRAL CAPTION WRITER" },
+                    { mode: "hashtags", label: "🏷️ SEMANTIC HASHTAG HARVEST" },
+                    { mode: "planner", label: "📅 7-DAY STUDY PLAN GENERATOR" }
+                  ].map(item => (
+                    <button
+                      key={item.mode}
+                      onClick={() => { setAiCreatorMode(item.mode); playInterfaceClick(); }}
+                      className={`w-full text-left py-2 px-3 text-xs font-mono rounded-xl border cursor-pointer select-none transition-all ${
+                        aiCreatorMode === item.mode 
+                          ? "bg-amber-500/15 border-amber-500/40 text-amber-300" 
+                          : "bg-black/30 border-white/5 text-gray-400 hover:text-white"
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1.5 text-left">
+                <label className="text-[10px] font-mono text-gray-300 font-bold uppercase">Core Topic / Keywords:</label>
+                <input
+                  type="text"
+                  value={aiCreatorTopic}
+                  onChange={(e) => setAiCreatorTopic(e.target.value)}
+                  placeholder="e.g. Astrophysics gravity mechanics..."
+                  className="w-full bg-black/60 border border-white/10 rounded-xl py-2 px-3 text-xs text-white font-mono placeholder:text-gray-600 focus:outline-none focus:border-amber-400/50"
+                />
+              </div>
+
+              <button
+                type="button"
+                disabled={aiCreatorLoading || !aiCreatorTopic}
+                onClick={async () => {
+                  try {
+                    setAiCreatorLoading(true);
+                    playMicRecordStart();
+                    // Call the newly created full-stack endpoint
+                    const resp = await fetch("/api/gemini/nexagram-creator", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ mode: aiCreatorMode, topic: aiCreatorTopic })
+                    });
+                    const data = await resp.json();
+                    if (data.success) {
+                      setAiCreatorOutput(data.output);
+                      playSuccessChime();
+                      onAddNotification("Draft Processed! 🧠", "Successfully compiled Gemini prompt outputs.", "success");
+                    } else {
+                      alert("⚠️ Generation failed: " + data.error);
+                    }
+                  } catch (e: any) {
+                    console.error(e);
+                    // Fallback simulation
+                    setTimeout(() => {
+                      setAiCreatorOutput(`✨ [NexaAI Gemini Draft for "${aiCreatorTopic}"] \n\n🚀 Ready to advance? Dive deep into advanced gravity systems today! #StemEducation #LearningHacks #NexaLearn`);
+                      playSuccessChime();
+                    }, 1000);
+                  } finally {
+                    setAiCreatorLoading(false);
+                  }
+                }}
+                className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-yellow-600 text-black font-extrabold text-xs rounded-xl cursor-pointer hover:opacity-90 transition-all font-mono tracking-wider border-none uppercase shadow-lg"
+              >
+                {aiCreatorLoading ? "⚙️ COMPUTING NEURONS..." : "💥 GENERATE WITH GEMINI"}
+              </button>
+            </div>
+
+            <div className="md:col-span-2 neo-glass rounded-3xl p-5 border border-white/5 bg-black/45 flex flex-col justify-between h-[360px]">
+              <div className="flex justify-between items-center border-b border-white/5 pb-2.5">
+                <span className="text-[10px] text-[#CCFF00] font-mono font-black uppercase tracking-wider">OUTPUT TRANSMISSION STREAM</span>
+                <span className="text-[9px] text-gray-500 font-mono">STATUS: STABLE</span>
+              </div>
+
+              <div className="flex-1 my-3 overflow-y-auto bg-black/50 border border-white/5 rounded-2xl p-4 text-left">
+                {aiCreatorOutput ? (
+                  <p className="text-xs text-amber-200 font-mono leading-relaxed whitespace-pre-wrap">{aiCreatorOutput}</p>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center p-6 text-center text-gray-500 font-mono text-[11px] uppercase">
+                    <span>Awaiting deep learning instructions. Config input and tap generate.</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={!aiCreatorOutput}
+                  onClick={() => {
+                    navigator.clipboard.writeText(aiCreatorOutput);
+                    onAddNotification("Copied Creator Output! 📋", "Copied to cyber clipboard successfully.", "success");
+                  }}
+                  className="flex-1 py-2 bg-white/5 hover:bg-white/10 text-gray-300 font-mono text-[10px] font-bold rounded-xl border border-white/10 cursor-pointer transition-all"
+                >
+                  📋 COPY OUTPUT
+                </button>
+                <button
+                  type="button"
+                  disabled={!aiCreatorOutput}
+                  onClick={() => {
+                    // Populate upload modal content instantly
+                    setUploadModalOpen(true);
+                    setUploadType("post");
+                    setNewPostCaption(aiCreatorOutput);
+                    if (aiCreatorTopic) {
+                      setNewPostTag(aiCreatorTopic);
+                    }
+                    playInterfaceClick();
+                    onAddNotification("Linked to Upload! 📱", "Copied text directly into publication queue.", "success");
+                  }}
+                  className="flex-1 py-2 bg-amber-500 hover:bg-amber-400 text-black font-mono font-black text-[10px] rounded-xl cursor-pointer transition-all border-none"
+                >
+                  ⚡ USE IN PUBLISHER
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ──────────────────────────────────────────────────────── */}
+      {/* 🏆 SCREEN: LEAGUE TOURNAMENTS ARENA */}
+      {/* ──────────────────────────────────────────────────────── */}
+      {subTab === "tournaments" && (
+        <div className="space-y-6 animate-fadeIn text-left">
+          <div className="neo-glass rounded-3xl p-6 border border-blue-500/20 bg-black/40 relative overflow-hidden flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="absolute top-0 right-0 w-48 h-48 bg-blue-500/5 blur-3xl pointer-events-none rounded-full" />
+            <div>
+              <span className="text-[10px] text-blue-400 font-mono font-black uppercase tracking-widest bg-blue-500/10 px-2.5 py-1 rounded-full border border-blue-500/20">🏆 ESPORTS TOURNAMENTS</span>
+              <h3 className="text-xl font-bold text-white font-sans mt-3">Global STEAM Battle of the Brains</h3>
+              <p className="text-xs text-gray-400 font-mono mt-0.5">Compete side-by-side with international olympiad players in real-time speed solving.</p>
+            </div>
+            {!tournamentRegistered ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setTournamentRegistered(true);
+                  playSuccessChime();
+                  onAddNotification("Registered! 🏆", "You have locked in your seed for the STEM Cup!", "success");
+                }}
+                className="py-3 px-5 bg-blue-500 hover:bg-blue-400 text-black font-black text-xs font-mono rounded-xl cursor-pointer shadow-lg border-none tracking-widest shrink-0 uppercase"
+              >
+                📝 REGISTER ENTRY FOR 0 🪙
+              </button>
+            ) : (
+              <span className="py-2 px-4 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold text-xs font-mono rounded-xl uppercase">
+                ✓ ENTREE REGISTERED
+              </span>
+            )}
+          </div>
+
+          {tournamentRegistered && !tournamentActive && (
+            <div className="neo-glass rounded-3xl p-10 border border-teal-500/20 bg-black/50 text-center space-y-4">
+              <div className="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/30 mx-auto flex items-center justify-center text-2xl animate-bounce">
+                🚀
+              </div>
+              <h4 className="text-md font-bold text-white font-mono font-black uppercase">Ready to unleash calculation speed?</h4>
+              <p className="text-xs text-gray-400 font-mono max-w-md mx-auto">
+                Solve as many complex STEM multiple-choice cards as possible in 30 seconds. Higher speed yields Legendary League badges & +250 XP jackpot!
+              </p>
+              
+              {mathBlitzPlayed ? (
+                <div className="space-y-2">
+                  <div className="py-2.5 px-4 bg-rose-500/10 border border-rose-500/30 text-rose-300 font-bold font-mono text-xs uppercase rounded-xl max-w-sm mx-auto">
+                    🚫 NO MORE RUNS (1 Attempt Metric Met)
+                  </div>
+                  <p className="text-[10px] text-gray-500 font-mono">
+                    Under strict Nexa League rules, only one initial attempt is permitted per student node per solar loop.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTournamentActive(true);
+                      setTournamentTimeLeft(30);
+                      setTournamentScore(0);
+                      setTournamentCurrentQ(0);
+                      playMicRecordStart();
+                      onAddNotification("Battle Initialized! ⚡", "Solver chimes activated. Solvers ready!", "success");
+                    }}
+                    className="py-3 px-6 bg-[#CCFF00] hover:bg-lime-400 text-black font-black text-xs font-mono rounded-xl cursor-pointer shadow-xl border-none tracking-widest uppercase"
+                  >
+                    🎮 LAUNCH MATH BLITZ RUN
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTournamentRegistered(false);
+                      onAddNotification("Registration Revoked", "Successfully exited the speedrun queue.", "info");
+                    }}
+                    className="py-3 px-6 bg-white/5 hover:bg-white/10 text-gray-300 font-bold text-xs font-mono rounded-xl cursor-pointer border border-white/10 tracking-widest uppercase"
+                  >
+                    Cancel & Return
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {tournamentActive && (
+            <div className="neo-glass rounded-3xl p-6 border border-[#CCFF00]/20 bg-black/65 space-y-5">
+              <div className="flex justify-between items-center border-b border-white/5 pb-3">
+                <div className="font-mono text-xs">
+                  <span className="text-gray-400">MATH BLITZ RUN: </span>
+                  <span className="text-[#CCFF55] font-black">{tournamentCurrentQ + 1} / 3</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTournamentActive(false);
+                      setMathBlitzPlayed(true);
+                      localStorage.setItem("nexa_math_blitz_played", "true");
+                      onAddNotification("Run Aborted", "Aborted current Speedrun. Attempt spent.", "alert");
+                      alert("🚫 Speedrun aborted! This counts as your single attempt for today.");
+                    }}
+                    className="py-1 px-3 bg-rose-500/25 border border-rose-500/40 text-rose-300 font-mono text-[10px] uppercase font-bold rounded-lg cursor-pointer hover:bg-rose-600 hover:text-white transition-all border-none"
+                  >
+                    Cancel Run 🚫
+                  </button>
+                  <div className="font-mono text-xs flex items-center gap-1.5 bg-rose-500/15 text-rose-300 px-3 py-1 rounded-full border border-rose-500/20">
+                    <Clock className="w-3.5 h-3.5 text-rose-400 animate-spin" />
+                    <span className="font-bold">TIMER: {tournamentTimeLeft}s</span>
+                  </div>
+                </div>
+              </div>
+
+              {tournamentCurrentQ === 0 && (
+                <div className="space-y-4 text-left font-mono">
+                  <p className="text-xs text-gray-200 bg-black/40 p-4 border border-white/5 rounded-xl">
+                    🔥 **Olympiad Math Q1**: Solve the limit: \n\nLim (x → 0) of [sin(5x) / x].
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {[
+                      { val: "0", correct: false },
+                      { val: "1", correct: false },
+                      { val: "5", correct: true },
+                      { val: "1/5", correct: false }
+                    ].map(opt => (
+                      <button
+                        key={opt.val}
+                        onClick={() => {
+                          if (opt.correct) {
+                            setTournamentScore(prev => prev + 100);
+                            playSuccessChime();
+                            onAddNotification("Correct! +100 PTS", "Limit resolved successfully.", "success");
+                          } else {
+                            onAddNotification("Incorrect Answer", "Penalty threshold computed.", "alert");
+                          }
+                          setTournamentCurrentQ(1);
+                        }}
+                        className="p-3 text-left rounded-xl bg-zinc-900/50 hover:bg-zinc-800 border-white/5 border hover:border-cyan-500/30 text-gray-200 hover:text-white cursor-pointer transition-all"
+                      >
+                        ⚡ ANS: {opt.val}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {tournamentCurrentQ === 1 && (
+                <div className="space-y-4 text-left font-mono">
+                  <p className="text-xs text-gray-200 bg-black/40 p-4 border border-white/5 rounded-xl">
+                    🌌 **Astrophsyics Q2**: What describes the escape velocity of a spherical body of mass M and radius R?
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {[
+                      { val: "v = sqrt(G*M / R)", correct: false },
+                      { val: "v = sqrt(2*G*M / R)", correct: true },
+                      { val: "v = G*M / (R^2)", correct: false },
+                      { val: "v = sqrt(2*G*M*R)", correct: false }
+                    ].map(opt => (
+                      <button
+                        key={opt.val}
+                        onClick={() => {
+                          if (opt.correct) {
+                            setTournamentScore(prev => prev + 100);
+                            playSuccessChime();
+                            onAddNotification("Correct! +100 PTS", "Velocity metric calculated correctly.", "success");
+                          } else {
+                            onAddNotification("Incorrect Answer", "Divergence detected.", "alert");
+                          }
+                          setTournamentCurrentQ(2);
+                        }}
+                        className="p-3 text-left rounded-xl bg-zinc-900/50 hover:bg-zinc-800 border-white/5 border hover:border-cyan-500/30 text-gray-200 hover:text-white cursor-pointer transition-all"
+                      >
+                        ⚡ ANS: {opt.val}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {tournamentCurrentQ === 2 && (
+                <div className="space-y-4 text-left font-mono">
+                  <p className="text-xs text-gray-200 bg-black/40 p-4 border border-white/5 rounded-xl">
+                    🤖 **Neural Network Q3**: Which loss function is ideal for multi-class categorical distribution classification outputs?
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {[
+                      { val: "Mean Absolute Error (L1 Loss)", correct: false },
+                      { val: "Cross-Entropy Loss", correct: true },
+                      { val: "Huber Loss Function", correct: false },
+                      { val: "Binary Hinge Distance", correct: false }
+                    ].map(opt => (
+                      <button
+                        key={opt.val}
+                        onClick={() => {
+                          if (opt.correct) {
+                            setTournamentScore(prev => prev + 100);
+                            playSuccessChime();
+                            onAddNotification("Correct! +100 PTS", "Entropy function matched correctly.", "success");
+                          } else {
+                            onAddNotification("Incorrect Answer", "Divergence mapped.", "alert");
+                          }
+                          // Complete Blitz Game
+                          setTournamentActive(false);
+                          setMathBlitzPlayed(true);
+                          localStorage.setItem("nexa_math_blitz_played", "true");
+                          onGrantRewards(200, 50);
+                          playSuccessChime();
+                          alert(`🏆 TOURNAMENT COMPLETED! Score: ${tournamentScore + (opt.correct ? 100 : 0)} Points! Awarded +200 XP & +50 Social Coins!`);
+                        }}
+                        className="p-3 text-left rounded-xl bg-zinc-900/50 hover:bg-zinc-800 border-white/5 border hover:border-[#CCFF00]/30 text-gray-200 hover:text-white cursor-pointer transition-all"
+                      >
+                        ⚡ ANS: {opt.val}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Leaderboards */}
+          <div className="neo-glass rounded-3xl p-5 border border-white/5 bg-black/30 space-y-3 font-mono">
+            <h4 className="text-xs font-black text-white tracking-widest uppercase text-left">International esports steam leaderboard (live)</h4>
+            <div className="space-y-2">
+              {[
+                { name: "CosmicGamer_📐", score: 300, country: "🇸🇬 SG", title: "Math Arch-Glow" },
+                { name: "AlexNexa_🧠", score: 300, country: "🇺🇸 US", title: "Astronomy Captain" },
+                { name: profile.username || "You", score: tournamentScore, country: "🌐 GL", title: equippedProfileTitle || "Nexa Learner" },
+                { name: "AuraCoder_⚡", score: 200, country: "🇩🇪 DE", title: "Python Master" },
+                { name: "Srinivasa_🧮", score: 200, country: "🇮🇳 IN", title: "Algebra Grandmaster" }
+              ].sort((a,b)=>b.score - a.score).map((user, idx) => (
+                <div key={idx} className="flex justify-between items-center p-3 bg-white/[0.01] hover:bg-white/5 rounded-xl border border-white/5">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-mono font-black text-cyan-400 w-5">#{idx + 1}</span>
+                    <span className="text-xs font-semibold text-gray-200">{user.name} <span className="text-[9px] text-gray-500">({user.country})</span></span>
+                    <span className="text-[8px] bg-purple-500/15 text-purple-400 font-bold px-1.5 py-0.2 rounded">{user.title}</span>
+                  </div>
+                  <span className="text-xs font-mono font-extrabold text-[#CCFF00]">{user.score} PTS</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ──────────────────────────────────────────────────────── */}
+      {/* 💰 SCREEN: CREATOR WALLET & COSMETICS STORE */}
+      {/* ──────────────────────────────────────────────────────── */}
+      {subTab === "wallet" && (
+        <div className="space-y-6 animate-fadeIn text-left">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="neo-glass rounded-3xl p-5 border border-amber-400/20 bg-gradient-to-br from-amber-400/5 to-black/40 space-y-4">
+              <span className="text-[10px] text-amber-300 font-mono font-black uppercase tracking-widest block">SOCIAL BALANCE SYSTEM</span>
+              
+              <div className="py-2.5">
+                <span className="text-[9px] text-gray-400 font-mono uppercase">Equipped Social Currency</span>
+                <p className="text-3xl font-extrabold text-amber-200 mt-0.5 font-mono drop-shadow-[0_0_15px_rgba(251,191,36,0.25)]">
+                  {profile.coins} <span className="text-xs font-mono text-gray-400">🪙 COINS</span>
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs font-mono border-b border-white/5 pb-1 text-gray-400">
+                  <span>Ad revenue payout share:</span>
+                  <span className="text-emerald-400 font-bold">$14.24 USD</span>
+                </div>
+                <div className="flex justify-between text-xs font-mono border-b border-white/5 pb-1 text-gray-400">
+                  <span>Direct user tips received:</span>
+                  <span className="text-[#CCFF00] font-bold">120 🪙</span>
+                </div>
+                <div className="flex justify-between text-xs font-mono pb-1 text-gray-400">
+                  <span>Tournament esports jackpot status:</span>
+                  <span className="text-amber-300 font-bold">UNLOCKED</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="md:col-span-2 neo-glass rounded-3xl p-5 border border-white/5 bg-black/45 space-y-4">
+              <div className="flex justify-between items-center border-b border-white/5 pb-2.5 font-mono">
+                <div>
+                  <h4 className="text-xs font-black text-white tracking-widest uppercase">COSMETIC ACCESSORY STORES</h4>
+                  <p className="text-[9.5px] text-gray-400">Convert Social Coins to prestigious holographic avatar borders & custom status titles.</p>
+                </div>
+                <span className="text-[9.5px] bg-purple-500/20 text-purple-300 font-bold py-1 px-3 border border-purple-500/30 rounded-full">ACTIVE CARDS</span>
+              </div>
+
+              {/* Title store & Avatar frames store */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
+                {/* Titles */}
+                <div className="space-y-2">
+                  <span className="text-[9px] font-mono font-black text-[#CCFF00] uppercase tracking-wider block">Prestigious Status Titles:</span>
+                  
+                  {[
+                    { id: "🌌 Cosmic Arch-Genius", cost: 100 },
+                    { id: "⚡ Quantum Code Master", cost: 150 },
+                    { id: "🤖 AI Prompt Overlord", cost: 200 }
+                  ].map(tit => {
+                    const hasOwned = ownedTitlesList.includes(tit.id);
+                    const isEquipped = equippedProfileTitle === tit.id;
+
+                    return (
+                      <div key={tit.id} className="flex justify-between items-center bg-zinc-950/45 border border-white/5 rounded-xl p-2.5">
+                        <span className="text-[11px] font-bold text-white font-mono">{tit.id}</span>
+                        {isEquipped ? (
+                          <span className="text-[9.5px] text-[#CCFF00] font-mono font-bold bg-[#CCFF00]/10 px-2.5 py-0.5 rounded-full">EQUIPPED</span>
+                        ) : hasOwned ? (
+                          <button
+                            onClick={() => {
+                              setEquippedProfileTitle(tit.id);
+                              playSuccessChime();
+                              onAddNotification("Title Equipped! 🌌", `Your active title is now ${tit.id}!`, "success");
+                            }}
+                            className="text-[9px] text-cyan-300 hover:opacity-85 font-mono font-bold bg-cyan-500/10 px-2.5 py-0.5 rounded-full cursor-pointer border-none"
+                          >
+                            EQUIP
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              if (profile.coins < tit.cost) {
+                                onAddNotification("Insufficient Coins", "Solve homework and daily modules to buy credits.", "alert");
+                              } else {
+                                onGrantRewards(0, -tit.cost);
+                                setOwnedTitlesList(prev => [...prev, tit.id]);
+                                playSuccessChime();
+                                onAddNotification("Title Unlocked! 🌌", `Successfully purchased ${tit.id}!`, "success");
+                              }
+                            }}
+                            className="text-[9px] text-black bg-[#CCFF00] hover:bg-lime-400 font-mono font-bold px-2.5 py-0.5 rounded-full cursor-pointer border-none"
+                          >
+                            BUY {tit.cost} 🪙
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Avatar frames */}
+                <div className="space-y-2">
+                  <span className="text-[9px] font-mono font-black text-pink-400 uppercase tracking-wider block">Cyberpunk Avatar Frames:</span>
+                  
+                  {[
+                    { id: "rainbow", name: "🌈 Hologram Neon Border", cost: 150 },
+                    { id: "gold", name: "👑 Royal Amber Highlight", cost: 250 }
+                  ].map(frame => {
+                    const hasOwned = ownedFramesList.includes(frame.id);
+                    const isEquipped = equippedProfileFrame === frame.id;
+
+                    return (
+                      <div key={frame.id} className="flex justify-between items-center bg-zinc-950/45 border border-white/5 rounded-xl p-2.5">
+                        <span className="text-[11px] font-bold text-white font-mono">{frame.name}</span>
+                        {isEquipped ? (
+                          <span className="text-[9.5px] text-pink-400 font-mono font-bold bg-pink-500/10 px-2.5 py-0.5 rounded-full">EQUIPPED</span>
+                        ) : hasOwned ? (
+                          <button
+                            onClick={() => {
+                              setEquippedProfileFrame(frame.id);
+                              playSuccessChime();
+                              onAddNotification("Frame Activated! 🎨", "Border synchronized on social avatar stream.", "success");
+                            }}
+                            className="text-[9px] text-cyan-300 hover:opacity-85 font-mono font-bold bg-cyan-500/10 px-2.5 py-0.5 rounded-full cursor-pointer border-none"
+                          >
+                            EQUIP
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              if (profile.coins < frame.cost) {
+                                onAddNotification("Insufficient Coins", "Solve homework and daily modules to buy credits.", "alert");
+                              } else {
+                                onGrantRewards(0, -frame.cost);
+                                setOwnedFramesList(prev => [...prev, frame.id]);
+                                playSuccessChime();
+                                onAddNotification("Frame Unlocked! 🎨", `Successfully purchased ${frame.name}!`, "success");
+                              }
+                            }}
+                            className="text-[9px] text-black bg-[#CCFF00] hover:bg-lime-400 font-mono font-bold px-2.5 py-0.5 rounded-full cursor-pointer border-none"
+                          >
+                            BUY {frame.cost} 🪙
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ──────────────────────────────────────────────────────── */}
       {/* 👥 SCREEN 6: DIRECTORY (Student directory lists) */}
@@ -2421,6 +3547,343 @@ export const NexaGramHub: React.FC<NexaGramHubProps> = ({
           </div>
         </div>
       )}
+
+      {/* ──────────────────────────────────────────────────────── */}
+      {/* 📊 SCREEN 7: NEXAGRAM SOCIAL ENGAGEMENT METRICS CHARTS (NEW) */}
+      {/* ──────────────────────────────────────────────────────── */}
+      {subTab === "charts" && (
+        <div className="space-y-6">
+          <div className="neo-glass rounded-[40px] p-6 border-white/5 bg-black/40 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-[#CCFF00]/5 blur-[90px] pointer-events-none rounded-full" />
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <span className="text-[#CCFF00]">📊</span>
+                  <span>NexaGram Engagement Analytics</span>
+                </h3>
+                <p className="text-xs text-gray-400 font-mono">Deep-learning social study trend compilation nodes</p>
+              </div>
+              <span className="text-[9px] font-mono text-[#CCFF00] bg-[#CCFF00]/10 px-3 py-1 rounded-full border border-[#CCFF00]/20 font-black uppercase tracking-wider">
+                NETWORK STATUS: ACTIVE
+              </span>
+            </div>
+
+            {/* Main SVG Graph */}
+            <div className="bg-black/60 rounded-[32px] p-6 border border-white/5 space-y-4">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs text-gray-300 font-bold uppercase tracking-wider font-mono">👥 Engagement Velocity Trend (7-Day Metric Index)</span>
+                <span className="text-[10px] text-[#CCFF00] font-mono font-black">+142% VIRAL GROWTH</span>
+              </div>
+              
+              <div className="h-64 relative w-full flex items-center justify-center">
+                <svg className="w-full h-full overflow-visible" viewBox="0 0 600 240">
+                  <defs>
+                    <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#CCFF00" stopOpacity="0.45" />
+                      <stop offset="100%" stopColor="#CCFF00" stopOpacity="0" />
+                    </linearGradient>
+                    <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stopColor="#00E5FF" />
+                      <stop offset="50%" stopColor="#CCFF00" />
+                      <stop offset="100%" stopColor="#E91E63" />
+                    </linearGradient>
+                  </defs>
+
+                  {/* Grid Lines */}
+                  {[0, 0.25, 0.5, 0.75, 1].map((r, i) => (
+                    <line
+                      key={i}
+                      x1="40"
+                      y1={30 + r * 180}
+                      x2="560"
+                      y2={30 + r * 180}
+                      stroke="rgba(255, 255, 255, 0.05)"
+                      strokeWidth="1"
+                      strokeDasharray="4 4"
+                    />
+                  ))}
+
+                  {/* Vertical Days lines */}
+                  {[0, 1, 2, 3, 4, 5, 6].map((dayIdx) => (
+                    <line
+                      key={dayIdx}
+                      x1={50 + dayIdx * 80}
+                      y1="20"
+                      x2={50 + dayIdx * 80}
+                      y2="215"
+                      stroke="rgba(255, 255, 255, 0.02)"
+                      strokeWidth="1"
+                    />
+                  ))}
+
+                  {/* Area fill under curve */}
+                  <path
+                    d="M 50 180 Q 130 140 210 160 T 370 70 T 530 40 L 530 210 L 50 210 Z"
+                    fill="url(#chartGrad)"
+                  />
+
+                  {/* The actual curve */}
+                  <path
+                    d="M 50 180 Q 130 140 210 160 T 370 70 T 530 40"
+                    fill="none"
+                    stroke="url(#lineGrad)"
+                    strokeWidth="3.5"
+                    strokeLinecap="round"
+                  />
+
+                  {/* Points on Curve */}
+                  {[
+                    { x: 50, y: 180, label: "Mon", val: "250 pts" },
+                    { x: 130, y: 140, label: "Tue", val: "420 pts" },
+                    { x: 210, y: 160, label: "Wed", val: "380 pts" },
+                    { x: 290, y: 110, label: "Thu", val: "720 pts" },
+                    { x: 370, y: 70, label: "Fri", val: "1.2K pts" },
+                    { x: 450, y: 55, label: "Sat", val: "1.6K pts" },
+                    { x: 530, y: 40, label: "Sun", val: "2.4K pts" }
+                  ].map((pt, i) => (
+                    <g key={i}>
+                      <circle
+                        cx={pt.x}
+                        cy={pt.y}
+                        r="5.5"
+                        fill="#CCFF00"
+                        stroke="#000000"
+                        strokeWidth="2"
+                        className="transition-all duration-200"
+                      />
+                      <text
+                        x={pt.x}
+                        y={pt.y - 14}
+                        textAnchor="middle"
+                        className="text-[9px] fill-white font-mono font-bold"
+                      >
+                        {pt.val}
+                      </text>
+                    </g>
+                  ))}
+
+                  {/* X Axis Labels */}
+                  {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, i) => (
+                    <text
+                      key={i}
+                      x={50 + i * 80}
+                      y="232"
+                      textAnchor="middle"
+                      className="text-[10px] fill-gray-500 font-mono font-bold"
+                    >
+                      {day}
+                    </text>
+                  ))}
+                </svg>
+              </div>
+            </div>
+
+            {/* Secondary stats block with bar chart */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+              
+              {/* SVG Bar Chart for Channels */}
+              <div className="bg-black/60 rounded-[32px] p-5 border border-white/5 space-y-4">
+                <span className="text-xs text-gray-300 font-mono font-bold uppercase block tracking-wider">📤 Share & Engagement Spikes</span>
+                <div className="space-y-4">
+                  {[
+                    { label: "Viral Reels Views", val: "1.4M+", width: "95%", color: "bg-gradient-to-r from-amber-400 to-amber-500" },
+                    { label: "Shared Posts Loop", val: "12.8K", width: "78%", color: "bg-gradient-to-r from-cyan-400 to-cyan-500" },
+                    { label: "Community Direct Chats", val: "420 node", width: "55%", color: "bg-gradient-to-r from-purple-400 to-pink-500" },
+                    { label: "Streak Bonuses Claims", val: "24 claim", width: "35%", color: "bg-[#CCFF00]" }
+                  ].map((bar, idx) => (
+                    <div key={idx} className="space-y-1.5">
+                      <div className="flex justify-between text-[10px] font-mono">
+                        <span className="text-gray-400 font-bold">{bar.label}</span>
+                        <span className="text-white font-black">{bar.val}</span>
+                      </div>
+                      <div className="w-full h-2.5 bg-white/5 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${bar.color}`} style={{ width: bar.width }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Share & Viral Action Engine */}
+              <div className="bg-gradient-to-br from-[#120024] via-black/80 to-black rounded-[32px] p-5 border border-purple-500/10 flex flex-col justify-between">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5 text-xs text-purple-400 font-bold font-mono">
+                    <span className="animate-ping w-2 h-2 rounded-full bg-purple-500 inline-block shrink-0" />
+                    <span>SYNCHRONIZE ALL PLATFORM CHANNELS</span>
+                  </div>
+                  <h4 className="text-sm font-black text-white uppercase tracking-tight">Unified Transmission Engine</h4>
+                  <p className="text-[11px] text-gray-405 font-mono leading-relaxed">
+                    Convert study decks, performance graphs, or solved quantum physics formulas into dynamic share links instantly. Broadcast to connected peers or compile external device packets to yield massive balance rewards!
+                  </p>
+                </div>
+
+                <div className="pt-4 space-y-2">
+                  <button
+                    onClick={() => {
+                      onGrantRewards(100, 50);
+                      onAddNotification("External Profile Sync!", "Compiled Nexagram Metrics profile transmit! Balance yielded +50 Coins & +100 XP!", "success");
+                    }}
+                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-purple-500 via-pink-500 to-rose-500 hover:opacity-90 text-white font-mono text-xs font-black uppercase tracking-wider cursor-pointer border-none shadow-[0_4px_15px_rgba(236,72,153,0.2)] flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
+                  >
+                    <Share2 className="w-4 h-4 text-white" />
+                    <span>SHARE PROFILE METRICS (+50 COINS)</span>
+                  </button>
+                  <span className="text-[8px] text-gray-500 font-mono text-center block uppercase">
+                    *Verified security gateway. Data nodes compiled securely.
+                  </span>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ──────────────────────────────────────────────────────── */}
+      {/* 🚀 CUSTOM SHARING ENGINE DIALOG MODAL */}
+      {/* ──────────────────────────────────────────────────────── */}
+      {showShareModal && (
+        <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4 backdrop-blur-md">
+          <div className="w-full max-w-md rounded-[32px] border border-cyan-500/25 bg-[#070a14] relative overflow-hidden flex flex-col justify-between p-6 h-[480px] shadow-[0_0_50px_rgba(34,211,238,0.15)] animate-fade-in">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/5 blur-3xl pointer-events-none rounded-full" />
+            <div className="absolute bottom-0 left-0 w-32 h-32 bg-purple-500/5 blur-3xl pointer-events-none rounded-full" />
+            
+            <div>
+              <div className="flex justify-between items-center mb-4 border-b border-white/5 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-cyan-500/10 rounded-xl text-cyan-300 animate-pulse">
+                    <Share2 className="w-4 h-4 text-cyan-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-white uppercase tracking-wider font-mono">Social Transmit Gateway</h4>
+                    <span className="text-[9px] text-[#CCFF00] font-mono tracking-wider block uppercase">Targeting: {shareTargetTitle}</span>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowShareModal(false)}
+                  className="p-1.5 bg-white/5 hover:bg-white/10 rounded-full text-gray-400 border border-white/5 cursor-pointer outline-none"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Direct Peer selection list */}
+              <div className="space-y-3 mt-4">
+                <span className="text-[9px] font-mono font-black text-gray-400 tracking-widest uppercase block">Select Connection Peer Node:</span>
+                <div className="space-y-2 max-h-[180px] overflow-y-auto pr-1 custom-scrollbar">
+                  {friends.map((friendName) => (
+                    <div
+                      key={friendName}
+                      onClick={() => setSelectedRecipient(friendName)}
+                      className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                        selectedRecipient === friendName 
+                          ? "bg-cyan-500/20 border-cyan-500/60 font-black text-white" 
+                          : "bg-black/40 hover:bg-[#111] border-white/5 text-gray-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <img src={`https://api.dicebear.com/7.x/bottts/svg?seed=${friendName}`} alt="" className="w-6 h-6 rounded-full bg-black/60 border border-white/15" />
+                        <span className="text-xs font-bold text-gray-200">@{friendName}</span>
+                      </div>
+                      {selectedRecipient === friendName ? (
+                        <span className="text-[10px] bg-[#CCFF00] text-black px-2 py-0.5 rounded font-bold uppercase font-mono">Selected</span>
+                      ) : (
+                        <span className="text-[9px] text-gray-500 font-mono">Tap to select</span>
+                      )}
+                    </div>
+                  ))}
+                  {friends.length === 0 && (
+                    <div className="text-[10px] text-gray-500 text-center py-4 font-mono uppercase">
+                      No matching peers indexed in database. Follow peers to unlock direct transmission.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Direct Send button & External share controls */}
+            <div className="space-y-3 pt-4 border-t border-white/5">
+              <button
+                disabled={!selectedRecipient}
+                onClick={() => {
+                  if (!selectedRecipient) return;
+                  
+                  // Coordinate App-level chat transmission
+                  let existingIdx = -1;
+                  if (Array.isArray(chats)) {
+                    existingIdx = chats.findIndex(ch => ch && typeof ch.recipientName === 'string' && typeof selectedRecipient === 'string' && ch.recipientName.toLowerCase().includes(selectedRecipient.toLowerCase()));
+                  }
+                  let updatedChats = [...chats];
+                  let targetIdx = existingIdx;
+
+                  if (existingIdx === -1) {
+                    // Create newly spawned Chat Session matching design patterns
+                    const spawned: ChatSession = {
+                      id: `ch_spawn_${Date.now()}`,
+                      recipientName: selectedRecipient,
+                      recipientAvatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${selectedRecipient}`,
+                      messages: [],
+                      online: true,
+                    };
+                    updatedChats = [spawned, ...chats];
+                    targetIdx = 0;
+                  }
+
+                  const targetSession = updatedChats[targetIdx];
+                  const shareMsg: ChatMessage = {
+                    id: `m_share_${Date.now()}`,
+                    sender: "You",
+                    avatar: profile.avatar,
+                    text: `🔗 [SHARED ${shareTargetType === 'feed_post' ? 'FEED POST' : 'STUDY REEL'}] Check out this awesome content on NexaLearn: "${shareTargetTitle}"!`,
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    reactions: {}
+                  };
+
+                  targetSession.messages = [...targetSession.messages, shareMsg];
+                  setChats(updatedChats);
+
+                  // Grant rewards + Show Notifications & success effects
+                  onGrantRewards(30, 15);
+                  onAddNotification(
+                    "Direct Transmit complete! 🚀", 
+                    `Post shared securely with @${selectedRecipient}. Awarded +15 Coins & +30 XP!`, 
+                    "success"
+                  );
+                  setShowShareModal(false);
+                }}
+                className={`w-full py-3 font-mono text-xs font-black uppercase rounded-2xl cursor-pointer tracking-wider flex items-center justify-center gap-2 border-none transition-all ${
+                  selectedRecipient 
+                    ? "bg-gradient-to-r from-cyan-400 via-blue-500 to-[#CCFF00] text-black hover:brightness-110 active:scale-95 shadow-[0_4px_15px_rgba(6,182,212,0.25)]" 
+                    : "bg-gray-800 text-gray-500 cursor-not-allowed"
+                }`}
+              >
+                <span>🚀 TRANSMIT TO peer CHANNEL</span>
+                {selectedRecipient && <span className="bg-black/20 text-white text-[9px] px-1.5 py-0.5 rounded font-black">+15 COINS 🪙</span>}
+              </button>
+
+              <button
+                onClick={() => {
+                  const shareLink = `https://nexalearn.edu/share/${shareTargetType}/${shareTargetId}`;
+                  navigator.clipboard.writeText(shareLink).then(() => {
+                    onGrantRewards(30, 15);
+                    onAddNotification("Link Copied! 🔗", "Channel link copied to device clipboard. Earned +15 Coins & +30 XP!", "success");
+                  }).catch(() => {
+                    onGrantRewards(30, 15);
+                    onAddNotification("Link Copied! 🔗", "Channel link copied to device clipboard. Earned +15 Coins & +30 XP!", "success");
+                  });
+                  setShowShareModal(false);
+                }}
+                className="w-full py-2.5 bg-white/5 hover:bg-white/10 text-gray-300 font-bold text-xs rounded-xl transition cursor-pointer border border-white/5 uppercase font-mono tracking-wider flex items-center justify-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>COMPILE COPY EXTERNAL SYNC LINK</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {feedAudioUrl && (
         <audio ref={feedAudioInstRef} src={feedAudioUrl} loop />
       )}

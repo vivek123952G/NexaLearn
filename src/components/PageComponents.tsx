@@ -1096,16 +1096,6 @@ export const StudyReelsSwiper: React.FC<StudyReelsSwiperProps> = ({ reels, onLik
                 <span className="text-[9px] font-mono text-gray-400 mt-1">{reel.likes}</span>
               </button>
               
-              {/* INTERACTIVE VERIFIED SHARE TRIGGER */}
-              <button 
-                onClick={() => handleOpenShare(reel.id)}
-                className="flex flex-col items-center bg-transparent border-none cursor-pointer text-cyan-400 hover:text-[#CCFF00] transition-colors"
-                id={`share_reel_btn_${reel.id}`}
-              >
-                <span className="text-base">🚀</span>
-                <span className="text-[8px] font-mono text-[#CCFF00] mt-1 uppercase font-black tracking-wider">SHARE</span>
-              </button>
-
               {/* REMIX COMMENTARY OVERLAY TRIGGER */}
               <button 
                 onClick={() => handleStartRemix(reel)}
@@ -1137,48 +1127,6 @@ export const StudyReelsSwiper: React.FC<StudyReelsSwiperProps> = ({ reels, onLik
           </div>
         ))}
       </div>
-
-      {/* REEL SEND/SHARE DESTINATION PICKER DRAWER */}
-      {sharingReelId && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-          <div className="w-full max-w-xs bg-[#0b0f19] p-5 rounded-3xl border border-cyan-500/30 text-center animate-fade-in text-white shadow-[0_0_20px_rgba(6,182,212,0.3)]">
-            <span className="text-[9px] font-mono text-[#CCFF00] tracking-widest uppercase font-black bg-[#CCFF00]/10 px-2.5 py-0.5 rounded-full">
-              Verified Transmit Protocol
-            </span>
-            <h4 className="text-sm font-extrabold text-white mt-3 uppercase tracking-tight">Select Recipient Node</h4>
-            <p className="text-[10px] text-gray-400 mt-1 leading-normal">
-              You must transmit the video packets to a classmate to unlock the coin reward.
-            </p>
-
-            <div className="my-4 space-y-1.5 max-h-40 overflow-y-auto text-left pr-1 scrollbar-thin">
-              {mockPeers.map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setSelectedRecipient(p)}
-                  className={`w-full text-left py-2 px-3 text-xs font-mono rounded-xl border transition-all ${selectedRecipient === p ? 'bg-cyan-500/20 text-cyan-300 border-cyan-400' : 'bg-black/35 text-gray-300 border-white/5 hover:bg-white/5'}`}
-                >
-                  📡 @{p}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex gap-2.5 mt-4">
-              <button
-                onClick={handleCancelShare}
-                className="flex-1 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-200 focus:outline-none rounded-xl text-[10px] uppercase font-mono tracking-wider cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmShare}
-                className="flex-[1.5] py-1.5 bg-[#CCFF00] text-black font-extrabold text-[10px] uppercase font-mono tracking-wider rounded-xl cursor-pointer"
-              >
-                Send Share 🔗
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* DYNAMIC REMIX COMMENTARY RECORDING INTERFACE OVERLAY */}
       {activeRemixReel && (

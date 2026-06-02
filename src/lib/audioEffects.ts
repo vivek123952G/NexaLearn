@@ -160,3 +160,32 @@ export function playMicRecordStart() {
   osc.start();
   osc.stop(ctx.currentTime + 0.15);
 }
+
+/**
+ * Synthesize mic recording stop feedback tone
+ */
+export function playMicRecordStop() {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  if (ctx.state === "suspended") {
+    ctx.resume().catch(() => {});
+  }
+
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(1200, ctx.currentTime);
+  osc.frequency.setValueAtTime(600, ctx.currentTime + 0.06);
+
+  gain.gain.setValueAtTime(0.04, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+
+  osc.start();
+  osc.stop(ctx.currentTime + 0.12);
+}
+

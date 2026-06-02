@@ -425,7 +425,7 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({
                     selectedLBDuration === "1day" ? "bg-purple-500 text-white font-black" : "bg-white/5 hover:bg-white/10 text-gray-400"
                   }`}
                 >
-                  ⚡ 1 Day (2.5K)
+                  ⚡ 1 Day (30K)
                 </button>
                 <button
                   type="button"
@@ -434,7 +434,7 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({
                     selectedLBDuration === "1month" ? "bg-purple-500 text-white font-black" : "bg-white/5 hover:bg-white/10 text-gray-400"
                   }`}
                 >
-                  📅 1 Month (25K)
+                  📅 1 Month (60K)
                 </button>
                 <button
                   type="button"
@@ -443,16 +443,16 @@ export const AnimatedLeaderboard: React.FC<AnimatedLeaderboardProps> = ({
                     selectedLBDuration === "1year" ? "bg-purple-500 text-white font-black" : "bg-white/5 hover:bg-white/10 text-gray-400"
                   }`}
                 >
-                  👑 1 Year (100K)
+                  👑 1 Year (20M)
                 </button>
               </div>
 
               <button
                 onClick={() => {
                   const passCosts = {
-                    "1day": 2500,
-                    "1month": 25000,
-                    "1year": 100000
+                    "1day": 30000,
+                    "1month": 60000,
+                    "1year": 20000000
                   };
                   const passDurations = {
                     "1day": 24 * 60 * 60 * 1000,

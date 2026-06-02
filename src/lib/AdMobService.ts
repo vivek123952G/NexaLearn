@@ -6,16 +6,21 @@ import {
 import { Capacitor } from '@capacitor/core';
 
 // =========================
-// REAL ADMOB IDS (Production)
+// REAL ADMOB IDS (Production Credentials provided by user)
 // =========================
-const APP_ID = 'ca-app-pub-2996487725106736~8712669509';
-const REWARDED_ID = 'ca-app-pub-2996487725106736/1704475233';
+const APP_ID = 'ca-app-pub-2996487725106736~5645483039';
+const REWARDED_ID = 'ca-app-pub-2996487725106736/9066221826';
+const BANNER_ID = 'ca-app-pub-2996487725106736/1394235076';
+const INTERSTITIAL_ID = 'ca-app-pub-2996487725106736/5541217850';
+const APP_OPEN_ID = 'ca-app-pub-2996487725106736/8113206574';
 
 export const ADMOB_CONFIG = {
   APP_ID: APP_ID,
+  BANNER_ID: BANNER_ID,
+  INTERSTITIAL_ID: INTERSTITIAL_ID,
+  APP_OPEN_ID: APP_OPEN_ID,
   REWARDED_INTERSTITIAL_ID: REWARDED_ID,
   NATIVE_AD_ID: 'ca-app-pub-2996487725106736/2904587862',
-  INTERSTITIAL_ID: 'ca-app-pub-2996487725106736/8251906012'
 };
 
 // Log entry interface for audit and debugging compatibility
@@ -334,8 +339,25 @@ class AdMobService {
   }
 
   async showAppOpenAd(): Promise<boolean> {
-    console.log('ℹ️ App Open ad suppressed for structural UX stream.');
-    return true;
+    const isNative = Capacitor.isNativePlatform();
+    if (!isNative) {
+      this.log("INFO", "Simulated App Open Ad", "Suppressed presentation inside active browser stream.");
+      return true;
+    }
+    try {
+      this.log("PENDING", "App Open Showing", "Preparing to load and present App Open ad...");
+      await this.initialize();
+      await (AdMob as any).loadAppOpen({
+        adId: ADMOB_CONFIG.APP_OPEN_ID,
+      });
+      await (AdMob as any).showAppOpen();
+      this.log("SUCCESS", "App Open Success", "App Open ad rendered on launcher successfully.");
+      return true;
+    } catch (err) {
+      console.error("❌ App Open Ad failure:", err);
+      this.log("FAILED", "App Open Interrupted", String(err));
+      return false;
+    }
   }
 
   getLogs(): AdLogEntry[] {

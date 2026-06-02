@@ -143,66 +143,25 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
     }, 4000);
   };
 
-  // Launch Full-Screen Rewarded Interstitial Ad safely inside native app
+  // Launch Gacha Chest directly without ads
   const handleWatchAd = async () => {
-    if (isOfflineDetected) {
-      addNotification(
-        "CONNECTION ERROR 📶",
-        "📶 Connect internet to load real rewards",
-        "alert"
-      );
-      return;
-    }
-
-    if (cooldownRemaining > 0) {
-      addNotification(
-        "COOLDOWN ACTIVE 🛰️",
-        `Ad networks are recalibrating. Please wait ${cooldownRemaining}s before loading the next segment.`,
-        "alert"
-      );
-      return;
-    }
-
     if (adsWatchedToday >= DAILY_MAX_ADS) {
       addNotification(
         "DAILY COINDROP MAXED 🛑",
-        "Your student node has reached the maximum daily limit of rewarded advertisement units.",
+        "Your student node has reached the maximum daily limit of claimable Nexa mystery gift chests.",
         "alert"
       );
       return;
     }
 
-    try {
-      addNotification(
-        "CONNECTING AD SERVER 📡",
-        Capacitor.isNativePlatform()
-          ? "Contacting Google Mobile Ads server for verified Rewarded Interstitial stream..."
-          : "Initializing premium browser-based AdMob reward stream simulation...",
-        "info"
-      );
+    addNotification(
+      "UNBOXING CHEST 📦",
+      "Opening your standard daily Nexa mystery chest...",
+      "success"
+    );
 
-      // Trigger actual view (real AdMob SDK on Android, custom browser simulation on Web)
-      const success = await admobService.showRewardedAd(
-        (rewardedAmount) => {
-          // Grant Reward ONLY on successful Google AdMob SDK callback trigger
-          handleRewardSuccess(rewardedAmount);
-        },
-        () => {
-          // Complete ad view execution cleanup
-          fetchLogsAndHistory();
-        }
-      );
-
-      if (!success) {
-        addNotification(
-          "ADMOB FAILURE ⚠️",
-          "AdMob display was suspended or preloading delayed. Retrying queue sync...",
-          "alert"
-        );
-      }
-    } catch (err: any) {
-      addNotification("ADMOB FAILED ❌", err?.message || "Failed to load Google rewarded ad.", "alert");
-    }
+    // Directly claim reward, no ads
+    handleRewardSuccess(REWARD_RATE);
   };
 
   // Process Reward Token Integration with Random Gacha Gift Boxes
@@ -220,7 +179,20 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
       applyEffect: (prof: UserProfile) => { nextCoins: number; nextXp: number; nextTier?: string; nextAvatar?: string } 
     };
 
-    if (rand < 0.01) {
+    if (newCount === DAILY_MAX_ADS) {
+      // Guaranteed ULTIMATE LAST ONE GIFT Milestone (10,000 Coins + 1-Day Premium GOLD Pass)
+      drawnGift = {
+        id: "last_one_gift",
+        name: "Premium Season Pass: LAST ONE GIFT! 🎁",
+        emoji: "👑🎁",
+        desc: "CONGRATULATIONS! You completed today's mystery chest series and claimed the incredible 'LAST ONE GIFT'! You have been credited +10,000 Premium Coins and a 1-Day VIP Premium Pass!",
+        applyEffect: (p) => ({
+          nextCoins: (p.coins || 0) + 10000,
+          nextXp: (p.xp || 0) + 2000,
+          nextTier: "GOLD"
+        })
+      };
+    } else if (rand < 0.01) {
       // 1. Free Monthly Pass (1% probability)
       drawnGift = {
         id: "monthly_pass",
@@ -388,21 +360,21 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-cyan-500/10 via-[#2E5BFF]/10 to-transparent p-6 md:p-8 rounded-[32px] border border-cyan-500/20 shadow-inner">
         <div>
           <div className="flex items-center gap-2 text-cyan-400 font-mono text-xs uppercase tracking-widest font-black">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-            Nexa Ad Reward Portal
+            <span className="w-2 h-2 rounded-full bg-[#CCFF00] animate-pulse" />
+            Nexa Mystery Reward Portal
           </div>
           <h2 className="text-3xl font-black text-white mt-2 tracking-tight uppercase">
-            Watch Video Ads & <span className="text-[#CCFF00]">Earn Nexa (NEXA)</span>
+            Open Mystery Gift Chests & <span className="text-[#CCFF00]">Earn Nexa (NEXA)</span>
           </h2>
           <p className="text-xs text-gray-400 mt-1 max-w-xl leading-relaxed">
-            Claim free token rewards securely. Earn +10.0 NEXA coins per 15s verified Google AdMob video stream. (Limit 4 Ads daily).
+            Claim free token rewards and exclusive items securely! Receive +10.0 NEXA coins directly from the global server node.
           </p>
         </div>
         <div className="flex items-center gap-3">
           <div className="bg-white/5 border border-white/10 rounded-2xl py-2 px-4 flex items-center gap-2 font-mono text-[11px]">
             <Calendar className="w-4 h-4 text-[#CCFF00]" />
-            <span className="text-gray-400">Daily Cap: </span>
-            <span className="font-bold text-white">{adsWatchedToday}/{DAILY_MAX_ADS} completed</span>
+            <span className="text-gray-400">Daily Chests: </span>
+            <span className="font-bold text-white">{adsWatchedToday}/{DAILY_MAX_ADS} opened</span>
           </div>
         </div>
       </div>
@@ -421,7 +393,7 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
                   <span className="text-[10px] uppercase font-bold tracking-widest text-[#CCFF00] font-mono whitespace-nowrap">
                     Active Node Protocol
                   </span>
-                  <p className="text-sm font-bold text-gray-400 uppercase tracking-tight">Verified AdMob Feed</p>
+                  <p className="text-sm font-bold text-gray-400 uppercase tracking-tight">Verified Nexa Coindrop</p>
                 </div>
                 <button 
                   onClick={forceLogsRefresh}
@@ -455,6 +427,33 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
               </div>
             </div>
 
+            {/* Daily Progress to Last One Gift Tracker */}
+            <div className="bg-white/5 border border-white/5 rounded-3xl p-5 space-y-3 relative overflow-hidden leading-snug">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-[#CCFF00]/5 rounded-full blur-xl pointer-events-none" />
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">🎁</span>
+                  <div>
+                    <h4 className="text-xs font-black text-white uppercase tracking-tight">LAST ONE GIFT Progress</h4>
+                    <p className="text-[9.5px] text-[#CCFF00] font-mono">Unlock 10,000 Coins + 1 Day Premium Pass on 3rd chest!</p>
+                  </div>
+                </div>
+                <span className="text-xs font-mono font-black text-white bg-black/45 px-2 py-1 rounded-md border border-white/5">{adsWatchedToday} / {DAILY_MAX_ADS}</span>
+              </div>
+              {/* Progress bar */}
+              <div className="h-2.5 bg-neutral-950 rounded-full overflow-hidden p-0.5 border border-white/10">
+                <div 
+                  className="h-full bg-gradient-to-r from-cyan-400 via-[#CCFF00] to-green-400 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, (adsWatchedToday / DAILY_MAX_ADS) * 100)}%` }}
+                />
+              </div>
+              {adsWatchedToday >= DAILY_MAX_ADS && (
+                <p className="text-[10px] text-emerald-400 font-extrabold text-center uppercase tracking-wider bg-emerald-500/10 py-1.5 rounded-lg border border-emerald-500/20 animate-pulse">
+                  🎉 Ultimate LAST ONE GIFT milestone secured! Premium node activated.
+                </p>
+              )}
+            </div>
+
              {/* WATCH OR LOCK TRIGGER BUTTONS */}
             <div className="space-y-4 pt-4 z-10">
               {isOfflineDetected ? (
@@ -473,7 +472,7 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
                   className="w-full py-4.5 rounded-2xl bg-white/5 text-gray-500 font-mono text-xs uppercase tracking-widest font-black border border-white/10 cursor-not-allowed flex flex-col items-center justify-center select-none"
                 >
                   <span className="flex items-center gap-1.5"><CheckCircle className="w-4 h-4 text-emerald-500" /> DAILY MAX COMPLETED</span>
-                  <span className="text-[10px] text-gray-400 lowercase normal-case font-light block pt-0.5">Wait tomorrow for subsequent rewarded updates</span>
+                  <span className="text-[10px] text-gray-400 lowercase normal-case font-light block pt-0.5">Wait tomorrow for subsequent gift updates</span>
                 </button>
               ) : cooldownRemaining > 0 ? (
                 <button
@@ -489,7 +488,7 @@ export const WatchAndEarnConsole: React.FC<WatchAndEarnProps> = ({
                   className="w-full py-4.5 rounded-2xl bg-[#CCFF00] text-black font-mono text-sm uppercase tracking-widest font-black flex items-center justify-center gap-2 cursor-pointer hover:bg-lime-400 hover:shadow-[0_0_20px_rgba(204,255,0,0.3)] transition-all border-none"
                 >
                   <Play className="w-4 h-4 fill-black" />
-                  <span>⚡ Watch & Earn Ad (+10.0 NEXA)</span>
+                  <span>🎁 Open Daily Mystery Chest (+10 NEXA)</span>
                 </button>
               )}
             </div>

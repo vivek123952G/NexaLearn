@@ -574,12 +574,9 @@ export const GrowthEngineHub: React.FC<GrowthEngineHubProps> = ({
                                 <span className="text-[8px] text-gray-400 font-mono">SIGNAL INDEX</span>
                               </div>
 
-                              <button 
-                                onClick={() => requestGatedPermissionShield(() => triggerOfflineP2PShare(peer.username))}
-                                className="px-3 py-1.5 bg-[#CCFF00] hover:bg-cyan-400 text-black font-extrabold rounded-lg text-[10px] uppercase border-none cursor-pointer scale-100 hover:scale-[1.03] transition-all"
-                              >
-                                share notes
-                              </button>
+                              <div className="px-3 py-1.5 bg-red-500/10 border border-red-500/20 text-red-400 font-black rounded-lg text-[9px] uppercase font-mono tracking-widest">
+                                Shared Locked
+                              </div>
                             </div>
                           </div>
                         ))}

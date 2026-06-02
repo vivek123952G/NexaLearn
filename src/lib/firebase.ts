@@ -12,7 +12,9 @@ import {
   orderBy,
   onSnapshot,
   getDocFromServer,
-  deleteDoc
+  deleteDoc,
+  disableNetwork,
+  enableNetwork
 } from "firebase/firestore";
 import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 export { GoogleAuthProvider, signInWithPopup };
@@ -78,19 +80,16 @@ function withTimeout<T>(promise: Promise<T>, ms = 6000, description = "Operation
 
 // Connection Health Check & Auto Offline Mode Tuning
 export async function auditFirestoreConnection(): Promise<boolean> {
-  const testDocRef = doc(db, "connection_test", "health");
-  try {
-    // Attempt to pull a document directly from the server with a short timeout.
-    // If the server doesn't respond in 4.5 seconds or the sandbox blocks the network, we fall back to offline mode.
-    await withTimeout(getDocFromServer(testDocRef), 4500, "Firestore database ping");
-    console.log("📶 Firestore connection test successful! Cloud synchronization is fully operational.");
-    localStorage.setItem("nexa_firestore_connected", "true");
-    return true;
-  } catch (err) {
-    console.warn("⚠️ Firestore connection test timeout/failure - switching local cache mode:", err);
+  // Safe navigator online guard
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    console.warn("🔌 Browser status is offline. Running with seamless offline-cache mode fallback.");
     localStorage.setItem("nexa_firestore_connected", "false");
     return false;
   }
+
+  // Set connected state as true and let standard Firestore handle timeouts/network transitions seamlessly.
+  localStorage.setItem("nexa_firestore_connected", "true");
+  return true;
 }
 
 // Spark the connection test in the background silently
@@ -132,15 +131,29 @@ export function handleFirestoreError(
   };
   
   // Custom silentTelemetry logging inside errors collection
-  try {
-    const errorLogId = `err_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-    setDoc(doc(db, "errors", errorLogId), {
-      ...errInfo,
-      timestamp: new Date().toISOString(),
-      userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "Node.js"
-    }).catch(e => console.error("Could not write telemetry crash log to database:", e));
-  } catch (logErr) {
-    console.error("Telemetry reporting failed:", logErr);
+  const isConnected = localStorage.getItem("nexa_firestore_connected") === "true";
+  if (isConnected) {
+    try {
+      const errorLogId = `err_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      setDoc(doc(db, "errors", errorLogId), {
+        ...errInfo,
+        timestamp: new Date().toISOString(),
+        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "Node.js"
+      }).catch(e => console.error("Could not write telemetry crash log to database:", e));
+    } catch (logErr) {
+      console.error("Telemetry reporting failed:", logErr);
+    }
+  } else {
+    // Write telemetry fallback to localStorage to prevent loops and avoid console spam
+    try {
+      const localErrors = JSON.parse(localStorage.getItem("nexa_offline_telemetry_logs") || "[]");
+      localErrors.push({
+        ...errInfo,
+        timestamp: new Date().toISOString()
+      });
+      if (localErrors.length > 20) localErrors.shift(); // Bound size limit
+      localStorage.setItem("nexa_offline_telemetry_logs", JSON.stringify(localErrors));
+    } catch (_) {}
   }
 
   console.warn("Firestore Error Logged Silently: ", JSON.stringify(errInfo));

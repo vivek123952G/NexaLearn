@@ -637,25 +637,18 @@ export const TalkTeacherView: React.FC<TalkTeacherViewProps> = ({
     }
   };
 
-  // Perform AdMob rewarded ad integration to unlock specialized syllabus masterplan sheet (voluntary user trigger)
-  const triggerAdMobUnlockMasterplan = async () => {
-    onAddNotification("Preparing Rewards", "Launching authorized AdMob reward ad layout...", "info");
+  // Unlock specialized syllabus masterplan using standard Nexa Coins
+  const triggerAdMobUnlockMasterplan = () => {
+    onAddNotification("Authorizing Unlock", "Attempting to spend Nexa Coins...", "info");
 
-    const rewardedSuccess = await admobService.showRewardedAd(
-      (amount) => {
-        setIsSyllabusUnlocked(true);
-        onGrantRewards(25, 40);
-        onAddNotification("Syllabus Unlocked", "Excellent! +25 Coins & +40 XP awarded. Customized Syllabus syllabus maps active!", "success");
-        alert("🎁 Verified fully successfully watched reward ad! Custom Syllabus study tracks are now loaded below!");
-      },
-      () => {
-        console.log("Ad video completed or skipped.");
-      }
-    );
-
-    if (!rewardedSuccess) {
-      setCooldownTime(30);
-      alert("⏳ A brief 2-minute cooldown gap is requested between AdMob reward videos to maintain high performance. Rest a bit and try again!");
+    if (onDeductCoins && onDeductCoins(10)) {
+      setIsSyllabusUnlocked(true);
+      onGrantRewards(25, 40);
+      onAddNotification("Syllabus Unlocked", "Success! Standard masterplan initialized. Awarded +25 Coins & +40 XP!", "success");
+      alert("🎁 Custom Syllabus study tracks are now loaded below!");
+    } else {
+      onAddNotification("Insufficient Coins 🪙", "You need 10 Nexa Coins to unlock the interactive masterplan.", "alert");
+      alert("Insufficient Coins! You need at least 10 Nexa Coins to unlock the Syllabus Masterplan.");
     }
   };
 
@@ -701,99 +694,6 @@ export const TalkTeacherView: React.FC<TalkTeacherViewProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
         {/* LEFT CONFIGURATION PANEL (4/12 width) */}
         <div className="lg:col-span-4 flex flex-col gap-6">
-          {/* TEACHER VOICE CONFIG & VISUALIZER */}
-          <div className="neo-glass p-5 rounded-[30px] border border-white/5 space-y-4">
-            <h4 className="text-xs font-black uppercase tracking-wider font-mono text-emerald-400 flex items-center gap-2">
-              <Mic className="w-4 h-4 text-emerald-400 animate-pulse" />
-              AI Voice Terminal Config
-            </h4>
-
-            {/* Simulated Live Audio Waveform */}
-            <div className="bg-black/40 border border-white/5 rounded-2xl p-4 flex flex-col items-center justify-center space-y-3">
-              <div className="flex items-center justify-center gap-1.5 h-10 w-full bg-black/50 rounded-xl px-4 border border-white/5">
-                {isListening ? (
-                  // Active user talking visualization
-                  <div className="flex items-center gap-1">
-                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping mr-2" />
-                    <span className="text-[10px] text-red-400 font-mono tracking-wide uppercase font-black uppercase">Your Voice Meter Active...</span>
-                  </div>
-                ) : (
-                  waveHeights.map((h, i) => (
-                    <div
-                      key={i}
-                      style={{ height: `${h}px` }}
-                      className={`w-1 rounded-full transition-all duration-75 ${
-                        isSpeaking ? "bg-[#CCFF00] shadow-[0_0_8px_#CCFF00]" : "bg-white/20"
-                      }`}
-                    />
-                  ))
-                )}
-              </div>
-              <span className={`text-[10px] uppercase font-mono tracking-wider ${isSpeaking ? "text-[#CCFF00] font-bold animate-pulse" : isListening ? "text-red-400 font-bold" : "text-gray-500"}`}>
-                {isSpeaking ? "AI Teacher Speaking Voice playing..." : isListening ? "● LISTENING TO YOUR VOICE..." : "AI Voice Mode Standby"}
-              </span>
-
-              {/* Physical Tap-To-Verbal-Talk Active Anchor */}
-              <button
-                onClick={toggleMicListening}
-                className={`w-full py-2.5 px-4 rounded-xl font-bold font-mono text-xs uppercase cursor-pointer flex items-center justify-center gap-2 transition-all ${
-                  isListening 
-                    ? "bg-red-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse" 
-                    : "bg-gradient-to-r from-[#CCFF00] to-emerald-400 text-black hover:brightness-110 font-black shadow-[0_4px_15px_rgba(204,255,0,0.15)]"
-                }`}
-              >
-                <Mic className={`w-4 h-4 ${isListening ? "animate-bounce" : ""}`} />
-                {isListening ? "Click to Stop Listening" : "Tap Here to Live Speech Talk"}
-              </button>
-              
-              <span className="text-[9px] text-gray-500 text-center block max-w-xs leading-normal">
-                {recognitionSupported 
-                  ? "✓ Fully supported. Click above to speak directly in your dialect!"
-                  : "⚠ Simulating voice actions over standard sound. Text fallback initialized."}
-              </span>
-            </div>
-
-            {/* Vocal speed controller selector */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-mono uppercase text-gray-400 block">Vocal Reading Speed Mode</label>
-              <div className="grid grid-cols-3 gap-1 bg-black/40 p-1 rounded-xl border border-white/5">
-                {[
-                  { value: 0.7, label: "Slow 🧘‍♂️", tip: "Kids & Beginners" },
-                  { value: 1.0, label: "Standard 🎓", tip: "Conversational" },
-                  { value: 1.3, label: "Energetic ⚡", tip: "Revision" }
-                ].map(rateOpt => (
-                  <button
-                    key={rateOpt.value}
-                    onClick={() => {
-                      setSpeechRate(rateOpt.value);
-                      onAddNotification("Voice Tuner Ready", `Teacher reading speed configured to: ${rateOpt.value}x`, "info");
-                    }}
-                    className={`py-1.5 px-2 text-[10px] rounded-lg font-bold uppercase transition-all flex flex-col items-center ${
-                      speechRate === rateOpt.value 
-                        ? "bg-[#CCFF00] text-black" 
-                        : "text-gray-400 hover:text-white"
-                    }`}
-                  >
-                    <span>{rateOpt.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Direct voice cancellation button */}
-            {isSpeaking && (
-              <button
-                onClick={() => {
-                  if (window.speechSynthesis) window.speechSynthesis.cancel();
-                  setIsSpeaking(false);
-                  setActiveVoiceMsgId(null);
-                }}
-                className="w-full py-2 bg-red-600/15 border border-red-500/20 text-red-300 font-black tracking-wider uppercase text-[10px] rounded-xl hover:bg-red-600/30 transition-all cursor-pointer flex justify-center items-center gap-1"
-              >
-                <Pause className="w-3.5 h-3.5" /> Stop Live Audio Playback
-              </button>
-            )}
-          </div>
 
           {/* CURRICULUM CONTROLS COLUMN */}
           <div className="neo-glass p-5 rounded-[30px] border border-white/5 space-y-4">
@@ -1321,18 +1221,17 @@ export const TalkTeacherView: React.FC<TalkTeacherViewProps> = ({
                 </div>
                 <h5 className="text-sm font-black text-white">Unlock Grade Syllabus Map for {selectedStandard.split(" ")[0]}</h5>
                 <p className="text-xs text-gray-400 max-w-lg">
-                  Watch a quick rewarded advertisement to unlock your class standard syllabus, optimized study targets, and gain +25 Coins & +40 XP instantly.
+                  Spend 10 standard Nexa Coins to unlock your class standard syllabus, optimized study targets, and gain +25 Coins & +40 XP instantly.
                 </p>
               </div>
 
               {!isSyllabusUnlocked ? (
                 <button
                   onClick={triggerAdMobUnlockMasterplan}
-                  disabled={cooldownTime > 0}
-                  className="py-2.5 px-5 bg-gradient-to-r from-yellow-500 to-amber-500 text-black font-black text-xs uppercase tracking-wider rounded-xl hover:scale-105 transition-all shadow-md flex items-center gap-1 cursor-pointer"
+                  className="py-2.5 px-5 bg-gradient-to-r from-yellow-500 to-amber-500 text-black font-black text-xs uppercase tracking-wider rounded-xl hover:scale-105 transition-all shadow-md flex items-center gap-1 cursor-pointer border-none"
                 >
                   <Lock className="w-4 h-4" />
-                  {cooldownTime > 0 ? `Ad Cooldown (${cooldownTime}s)` : "Unlock Masterplan (Ad)"}
+                  Unlock Masterplan (10 🪙)
                 </button>
               ) : (
                 <div className="py-1 px-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold font-mono uppercase rounded-full">

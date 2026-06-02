@@ -30,6 +30,7 @@ import {
 } from "./components/NewModuleComponents";
 
 import { NexaGramHub } from "./components/NexaGramHub";
+import { CosmicInnovationDeck } from "./components/CosmicInnovationDeck";
 import { GrowthEngineHub } from "./components/GrowthEngineHub";
 import { WatchAndEarnConsole } from "./components/WatchAndEarnConsole";
 import { LanguageTutorView } from "./components/LanguageTutorView";
@@ -197,7 +198,67 @@ export default function App() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [chats, setChats] = useState<ChatSession[]>([]);
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
+  const [localUploadedPosts, setLocalUploadedPosts] = useState<FeedPost[]>(() => {
+    try {
+      const saved = localStorage.getItem("nexa_local_uploaded_posts");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [reels, setReels] = useState<StudyReel[]>([]);
+  const [localUploadedReels, setLocalUploadedReels] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem("nexa_local_uploaded_reels");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Track and save locally posted elements to persistent local memory
+  useEffect(() => {
+    const newLocalPosts = feedPosts.filter(p => p.id.startsWith("p_uploaded_"));
+    if (newLocalPosts.length > 0) {
+      setLocalUploadedPosts(prev => {
+        const updated = [...prev];
+        let changed = false;
+        newLocalPosts.forEach(p => {
+          if (!updated.some(x => x.id === p.id)) {
+            updated.push(p);
+            changed = true;
+          }
+        });
+        if (changed) {
+          localStorage.setItem("nexa_local_uploaded_posts", JSON.stringify(updated));
+          return updated;
+        }
+        return prev;
+      });
+    }
+  }, [feedPosts]);
+
+  useEffect(() => {
+    const newLocalReels = reels.filter(r => r.id.startsWith("r_uploaded_"));
+    if (newLocalReels.length > 0) {
+      setLocalUploadedReels(prev => {
+        const updated = [...prev];
+        let changed = false;
+        newLocalReels.forEach(r => {
+          if (!updated.some(x => x.id === r.id)) {
+            updated.push(r);
+            changed = true;
+          }
+        });
+        if (changed) {
+          localStorage.setItem("nexa_local_uploaded_reels", JSON.stringify(updated));
+          return updated;
+        }
+        return prev;
+      });
+    }
+  }, [reels]);
   const [studyGroups, setStudyGroups] = useState<StudyGroup[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   
@@ -271,6 +332,87 @@ export default function App() {
     { username: "CodeGod_💻", loginTime: Date.now() - 920000, avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Coder" }
   ]);
   const [tickerTime, setTickerTime] = useState<number>(Date.now());
+
+  const mergeAndSetAllUsers = (incoming: any[]) => {
+    const seedUsers = [
+      { username: "CodeGod_💻", avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Coder", league: "Legend", online: false, lastSeen: "30m ago", xp: 15400 },
+      { username: "AuraCoder_⚡", avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Aura", league: "Legend", online: true, lastSeen: "Active now", xp: 12500 },
+      { username: "HyperPhysicist_⚛️", avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Physics", league: "Legend", online: true, lastSeen: "Active now", xp: 11000 },
+      { username: "BioQueen_🌿", avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Queen", league: "Legend", online: true, lastSeen: "Active now", xp: 9400 },
+      { username: "ChemWitch_🧪", avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Chem", league: "Titan", online: true, lastSeen: "Active now", xp: 7500 },
+      { username: "CyberScribe", avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Scribe", league: "Titan", online: false, lastSeen: "1h ago", xp: 5200 },
+      { username: "PhysicsLord_⚛️", avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Lord", league: "Gold", online: false, lastSeen: "Yesterday", xp: 3800 },
+      { username: "NerdGamer", avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Nerd", league: "Gold", online: true, lastSeen: "Active now", xp: 2100 },
+      { username: "NeoVisionary", avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Neo", league: "Silver", online: false, lastSeen: "3h ago", xp: 1100 },
+      { username: "RookieSolver_9", avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Rookie", league: "Bronze", online: false, lastSeen: "2 days ago", xp: 450 }
+    ];
+
+    let storedList: any[] = [];
+    try {
+      const stored = localStorage.getItem("nexa_local_registered_users");
+      if (stored) {
+        storedList = JSON.parse(stored);
+      }
+    } catch (_) {}
+
+    const userMap: Record<string, any> = {};
+
+    seedUsers.forEach(u => {
+      userMap[u.username.toLowerCase().trim()] = u;
+    });
+
+    storedList.forEach(u => {
+      const key = u.username.toLowerCase().trim();
+      userMap[key] = {
+        ...userMap[key],
+        ...u
+      };
+    });
+
+    incoming.forEach(u => {
+      const key = u.username.toLowerCase().trim();
+      userMap[key] = {
+        ...userMap[key],
+        ...u
+      };
+    });
+
+    const finalArray = Object.values(userMap).sort((a: any, b: any) => {
+      const xpA = a.xp !== undefined ? a.xp : 0;
+      const xpB = b.xp !== undefined ? b.xp : 0;
+      return xpB - xpA;
+    });
+
+    setAllUsers(finalArray);
+  };
+
+  const registerUserInLocalLeaderboard = (uname: string, userObj: any) => {
+    try {
+      const stored = localStorage.getItem("nexa_local_registered_users");
+      let list: any[] = [];
+      if (stored) {
+        try { list = JSON.parse(stored); } catch (_) {}
+      }
+      const cleaned = uname.toLowerCase().trim();
+      const existingIdx = list.findIndex(u => u.username.toLowerCase().trim() === cleaned);
+      const dataToSave = {
+        username: userObj.username || uname,
+        avatar: userObj.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${cleaned}`,
+        xp: userObj.xp !== undefined ? userObj.xp : 100,
+        coins: userObj.coins !== undefined ? userObj.coins : (userObj.nexa_coins !== undefined ? userObj.nexa_coins : 500),
+        league: userObj.league || "Bronze",
+        online: true,
+        lastSeen: "Active now"
+      };
+      if (existingIdx > -1) {
+        list[existingIdx] = { ...list[existingIdx], ...dataToSave };
+      } else {
+        list.push(dataToSave);
+      }
+      localStorage.setItem("nexa_local_registered_users", JSON.stringify(list));
+      mergeAndSetAllUsers([]);
+    } catch (_) {}
+  };
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -501,6 +643,7 @@ export default function App() {
         console.warn("Storage profile load error, resetting parameters.");
       }
     }
+    mergeAndSetAllUsers([]);
   }, []);
 
   // Live Community Realtime Synced Listeners
@@ -524,17 +667,8 @@ export default function App() {
       const uUsers = subscribeToGlobalUsers((dbUsers) => {
         if (!active) return;
         if (dbUsers && dbUsers.length > 0) {
-          setAllUsers((prev) => {
-            // Deduplicate lists, keeping dbUsers values as primary sources of truths
-            const merged = [...dbUsers];
-            const activeUsernames = new Set(merged.map(u => u.username.toLowerCase().trim()));
-            prev.forEach(u => {
-              if (u && u.username && !activeUsernames.has(u.username.toLowerCase().trim())) {
-                merged.push(u);
-              }
-            });
-            return merged.sort((a, b) => (b.xp || 0) - (a.xp || 0));
-          });
+          // Sync exact active list from cloud Firestore collection and merge with local registered cache.
+          mergeAndSetAllUsers(dbUsers);
         }
       });
       unsubUsers = uUsers;
@@ -546,7 +680,27 @@ export default function App() {
       const uReels = subscribeToGlobalReels((dbReels) => {
         if (!active) return;
         if (dbReels && dbReels.length > 0) {
-          setReels(dbReels);
+          setReels((currReels) => {
+            let localReelsFromStorage: any[] = [];
+            try {
+              const saved = localStorage.getItem("nexa_local_uploaded_reels");
+              localReelsFromStorage = saved ? JSON.parse(saved) : [];
+            } catch {}
+
+            const merged = [...dbReels];
+            currReels.forEach(r => {
+              if (r.id.startsWith("r_uploaded_") && !merged.some(m => m.id === r.id)) {
+                merged.push(r);
+              }
+            });
+            localReelsFromStorage.forEach(r => {
+              if (!merged.some(m => m.id === r.id)) {
+                merged.push(r);
+              }
+            });
+            merged.sort((a, b) => b.id.localeCompare(a.id));
+            return merged;
+          });
         } else {
           // Sync default seed reels backwards to keep feed populated
           const initialReels = getInitialReels().map(reel => ({
@@ -559,6 +713,7 @@ export default function App() {
               { id: `rc_2_${reel.id}`, username: "PhysicsTitan", avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=titan", text: "Could you make one for thermodynamics?", timeAgo: "45m ago" }
             ]
           }));
+          setReels(initialReels);
           initialReels.forEach((r) => {
             syncReelToFirestore(r.id, r).catch(() => {});
           });
@@ -574,9 +729,30 @@ export default function App() {
       const uPosts = subscribeToGlobalPosts((dbPosts) => {
         if (!active) return;
         if (dbPosts && dbPosts.length > 0) {
-          setFeedPosts(dbPosts);
+          setFeedPosts((currFeed) => {
+            let localPostsFromStorage: FeedPost[] = [];
+            try {
+              const saved = localStorage.getItem("nexa_local_uploaded_posts");
+              localPostsFromStorage = saved ? JSON.parse(saved) : [];
+            } catch {}
+
+            const merged = [...dbPosts];
+            currFeed.forEach(p => {
+              if (p.id.startsWith("p_uploaded_") && !merged.some(m => m.id === p.id)) {
+                merged.push(p);
+              }
+            });
+            localPostsFromStorage.forEach(p => {
+              if (!merged.some(m => m.id === p.id)) {
+                merged.push(p);
+              }
+            });
+            merged.sort((a, b) => b.id.localeCompare(a.id));
+            return merged;
+          });
         } else {
           const initialFeed = getInitialFeed();
+          setFeedPosts(initialFeed);
           initialFeed.forEach((p) => {
             syncPostToFirestore(p.id, p).catch(() => {});
           });
@@ -667,9 +843,10 @@ export default function App() {
     };
     setProfile(updated);
     localStorage.setItem("nexasnap_user", JSON.stringify(updated));
-    if (newProf.username) {
+    if (newProf.username && typeof newProf.username === 'string') {
       const uKey = newProf.username.toLowerCase().trim();
       localStorage.setItem(`nexasnap_user_${uKey}`, JSON.stringify(updated));
+      registerUserInLocalLeaderboard(newProf.username, updated);
       // Non-blocking dynamic Firestore persistence writeback on every profile save!
       import("./lib/firebase").then(({ syncUserProfileUpdate }) => {
         syncUserProfileUpdate(newProf.username, {
@@ -938,6 +1115,7 @@ export default function App() {
         localStorage.setItem("nexa_login_time", Date.now().toString());
         localStorage.setItem("nexasnap_user", JSON.stringify(activeProfile));
         localStorage.setItem(`nexasnap_user_${targetUsername}`, JSON.stringify(activeProfile));
+        registerUserInLocalLeaderboard(targetUsername, activeProfile);
 
         setProfile(activeProfile);
         setIsLoggedIn(true);
@@ -983,7 +1161,7 @@ export default function App() {
           xp: 100, // Initial sign up bonus
           coins: 500, // Initial balance
           streak: 0,
-          rank: 999,
+          rank: (allUsers || []).length + 1,
           league: "Bronze",
           premiumTier: "FREE",
           unlockedThemes: ["cyber-volt"],
@@ -1002,6 +1180,7 @@ export default function App() {
         localStorage.setItem("nexa_login_time", Date.now().toString());
         localStorage.setItem("nexasnap_user", JSON.stringify(newProf));
         localStorage.setItem(`nexasnap_user_${targetUsername}`, JSON.stringify(newProf));
+        registerUserInLocalLeaderboard(targetUsername, newProf);
 
         setProfile(newProf);
         setIsLoggedIn(true);
@@ -1111,7 +1290,7 @@ export default function App() {
           xp: 200, // Google initialization bonus!
           coins: 750, // Premium starter coins bundle
           streak: 0,
-          rank: 999,
+          rank: (allUsers || []).length + 1,
           league: "Bronze",
           premiumTier: "FREE",
           unlockedThemes: ["cyber-volt"],
@@ -1866,33 +2045,31 @@ export default function App() {
             <div className="absolute w-52 h-52 rounded-full border border-[#CCFF00]/15 animate-[spin_12s_infinite_reverse_linear] pointer-events-none" />
           </div>
 
-          <span className="text-[9px] font-mono tracking-widest text-[#CCFF00] bg-[#CCFF00]/10 px-3 py-1 rounded-full uppercase font-black animate-pulse">
-            🛸 Interactive 3D App Logo Prototype Active
+          <span className="text-[9px] font-mono tracking-widest text-[#00E5FF] bg-[#00E5FF]/10 px-3 py-1 rounded-full uppercase font-black animate-pulse">
+            🛸 NEXACLOUD LEARNING SYSTEMS ACTIVE
           </span>
 
-          <h1 className="text-4xl md:text-6xl font-black tracking-tighter text-white mt-4 uppercase italic">
-            NexaSnap <span className="text-[#CCFF00] drop-shadow-[0_0_12px_rgba(204,255,0,0.5)]">AI Infinity</span>
+          <h1 className="text-4xl md:text-7xl font-sans font-black tracking-tighter text-white mt-6 uppercase leading-none">
+            NEXA <span className="text-transparent bg-clip-text bg-gradient-to-r from-neon-purple to-electric-blue drop-shadow-[0_0_15px_rgba(139,92,246,0.3)]">LEARN</span>
           </h1>
           
-          <p className="text-gray-400 text-[10px] font-mono tracking-widest mt-3.5 uppercase animate-pulse">
-            SYNCHRONIZING ACADEMIC MATRIX CORE VALUES...
+          <h2 className="text-2xl md:text-4xl font-display font-bold text-[#f3f4f6] mt-3 tracking-tight">
+            Learn Without Limits. <span className="text-[#CCFF00]">Achieve Everything.</span>
+          </h2>
+
+          <p className="text-gray-400 text-sm md:text-base mt-4 max-w-xl mx-auto leading-relaxed">
+            The all-in-one learning platform to master skills, track progress, and achieve your goals with AI.
           </p>
 
-          <div className="mt-4 max-w-xs mx-auto p-2 bg-gradient-to-r from-cyan-950/20 to-indigo-950/20 rounded-2xl border border-white/5">
-            <p className="text-[9px] text-gray-400 font-mono italic leading-normal">
-              ℹ️ Tomorrow's custom 3D file placeholder active. Ready for live drop!
-            </p>
-          </div>
-
-          <div className="w-56 h-1 w-full bg-white/5 rounded-full overflow-hidden mt-8 max-w-xs mx-auto p-0.5 border border-white/10">
-            <div className="h-full bg-gradient-to-r from-cyan-400 via-[#7B61FF] to-[#CCFF00] w-2/3 rounded-full animate-[laser-sweep_4s_infinite_linear]" />
+          <div className="w-56 h-1 bg-white/5 rounded-full overflow-hidden mt-8 max-w-xs mx-auto p-0.5 border border-white/10">
+            <div className="h-full bg-gradient-to-r from-neon-purple via-electric-blue to-[#CCFF00] w-full rounded-full animate-[laser-sweep_4s_infinite_linear]" />
           </div>
 
           <button 
             onClick={() => setCurrentPage("login")}
-            className="mt-10 px-8 py-3 bg-[#CCFF00] text-black hover:bg-cyan-400 font-black rounded-xl text-[10px] font-mono tracking-widest transition-all cursor-pointer shadow-[0_4px_20px_rgba(204,255,0,0.25)] hover:scale-105 active:scale-95 border-none uppercase"
+            className="mt-10 px-10 py-4 bg-gradient-to-r from-neon-purple to-electric-blue text-white hover:brightness-110 font-bold rounded-2xl text-xs font-mono tracking-widest transition-all cursor-pointer shadow-[0_4px_30px_rgba(139,92,246,0.4)] hover:scale-105 active:scale-95 border-none uppercase flex items-center gap-2"
           >
-            ENTER THE ACADEMY ⚡
+            Start Learning Now <span className="font-sans text-sm">→</span>
           </button>
         </div>
       )}
@@ -1901,40 +2078,45 @@ export default function App() {
           2. LOGIN / SIGNUP AUTHPAGES
           ==================================================== */}
       {currentPage === "login" && (
-        <div className="min-h-screen flex items-center justify-center p-4">
-          <div className="w-full max-w-md neo-glass p-8 rounded-[35px] text-center border-white/5 shadow-2xl relative overflow-hidden bg-black/60">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 blur-3xl pointer-events-none rounded-full" />
+        <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+          <div className="absolute inset-0 pointer-events-none opacity-20">
+            <div className="absolute top-[20%] left-[20%] w-[30%] h-[30%] bg-neon-purple blur-[120px] rounded-full animate-pulse" />
+            <div className="absolute bottom-[20%] right-[20%] w-[30%] h-[30%] bg-electric-blue blur-[120px] rounded-full animate-pulse" />
+          </div>
+
+          <div className="w-full max-w-md bg-black/50 border border-white/10 backdrop-blur-3xl p-8 rounded-[32px] text-center shadow-[0_20px_60px_rgba(139,92,246,0.15)] relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[#00E5FF]/5 blur-3xl pointer-events-none rounded-full" />
             
-            <div className="mb-6">
-              <div className="w-12 h-12 bg-[#CCFF00]/15 text-[#CCFF00] rounded-2xl flex items-center justify-center mx-auto mb-4 border border-[#CCFF00]/20 animate-pulse">
-                <Crown />
+            <div className="mb-6 space-y-3">
+              <div className="w-14 h-14 bg-neon-purple/20 text-[#00E5FF] rounded-2xl flex items-center justify-center mx-auto border border-neon-purple/30 shadow-[0_0_15px_rgba(139,92,246,0.3)]">
+                <Crown className="w-7 h-7" />
               </div>
-              <h2 className="text-2xl font-black text-white tracking-tight">Access NexaLearn</h2>
-              <p className="text-xs text-gray-400 mt-2">Initialize your student node proxy to sync streaks, chats, and rewards</p>
+              <h2 className="text-3xl font-black text-white tracking-tight uppercase font-display">Nexa <span className="text-[#00E5FF]">Learn</span></h2>
+              <p className="text-xs text-gray-400 max-w-xs mx-auto">Initialize academic parameters & sync student nodes with real-time XP telemetry.</p>
             </div>
 
-            {/* DUAL MODE ACCORDION SWITCHER */}
-            <div className="grid grid-cols-2 gap-1 p-1 bg-black/40 rounded-xl border border-white/5 mb-6 text-xs font-mono">
+            {/* DUAL MODE SWITCHER */}
+            <div className="grid grid-cols-2 gap-1 p-1 bg-white/5 rounded-xl border border-white/5 mb-6 text-xs font-mono">
               <button
                 type="button"
                 onClick={() => setAuthMode('login')}
-                className={`py-2 rounded-lg font-bold transition-all border-none cursor-pointer uppercase ${authMode === 'login' ? 'bg-[#CCFF00] text-black shadow' : 'text-gray-400 hover:text-white'}`}
+                className={`py-2 px-3 rounded-lg font-bold transition-all border-none cursor-pointer uppercase ${authMode === 'login' ? 'bg-gradient-to-r from-neon-purple to-[#7B61FF] text-white shadow-[0_0_15px_rgba(139,92,246,0.4)]' : 'text-gray-400 hover:text-white bg-transparent'}`}
               >
-                Log In / Sign In
+                Sign In
               </button>
               <button
                 type="button"
                 onClick={() => setAuthMode('signup')}
-                className={`py-2 rounded-lg font-bold transition-all border-none cursor-pointer uppercase ${authMode === 'signup' ? 'bg-[#CCFF00] text-black shadow' : 'text-gray-400 hover:text-white'}`}
+                className={`py-2 px-3 rounded-lg font-bold transition-all border-none cursor-pointer uppercase ${authMode === 'signup' ? 'bg-gradient-to-r from-neon-purple to-[#7B61FF] text-white shadow-[0_0_15px_rgba(139,92,246,0.4)]' : 'text-gray-400 hover:text-white bg-transparent'}`}
               >
-                Sign Up / Register
+                Register
               </button>
             </div>
 
             <form onSubmit={handleSignUp} className="space-y-4">
-              <div className="text-left">
+              <div className="text-left space-y-1.5">
                 <label className="text-[10px] text-gray-400 uppercase font-bold tracking-widest pl-1 font-mono">
-                  {authMode === 'login' ? 'YOUR USERNAME (SIGN IN)' : 'DESIRED USERNAME (SIGN UP)'}
+                  {authMode === 'login' ? 'Student Username' : 'Define Username'}
                 </label>
                 <input
                   type="text"
@@ -1942,27 +2124,27 @@ export default function App() {
                   placeholder="e.g. BrainiacLord"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full mt-1.5 bg-black/40 text-sm text-white py-3 px-4 rounded-2xl border border-white/5 focus:border-[#CCFF00] focus:outline-none focus:glow-lime"
+                  className="w-full bg-black/40 text-sm text-white py-3 px-4 rounded-xl border border-white/10 focus:border-[#00E5FF] focus:outline-none focus:ring-1 focus:ring-[#00E5FF] transition-all"
                 />
               </div>
 
               {authMode === 'signup' && (
-                <div className="text-left">
-                  <label className="text-[10px] text-gray-400 uppercase font-bold tracking-widest pl-1 font-mono">EMAIL NODE (REQUIRED)</label>
+                <div className="text-left space-y-1.5">
+                  <label className="text-[10px] text-gray-400 uppercase font-bold tracking-widest pl-1 font-mono">Email node connection</label>
                   <input
                     type="email"
                     required
                     placeholder="your-node@domain.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full mt-1.5 bg-black/40 text-sm text-white py-3 px-4 rounded-2xl border border-white/5 focus:border-[#2E5BFF] focus:outline-none"
+                    className="w-full bg-black/40 text-sm text-white py-3 px-4 rounded-xl border border-white/10 focus:border-[#00E5FF] focus:outline-none focus:ring-1 focus:ring-[#00E5FF] transition-all"
                   />
                 </div>
               )}
 
-              <div className="text-left">
+              <div className="text-left space-y-1.5">
                 <label className="text-[10px] text-gray-400 uppercase font-bold tracking-widest pl-1 font-mono">
-                  {authMode === 'login' ? 'YOUR PASSWORD' : 'CREATE PASSWORD'}
+                  {authMode === 'login' ? 'Private Access Code' : 'Access Code (Password)'}
                 </label>
                 <input
                   type="password"
@@ -1970,56 +2152,64 @@ export default function App() {
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full mt-1.5 bg-black/40 text-sm text-white py-3 px-4 rounded-2xl border border-white/5 focus:border-[#CCFF00] focus:outline-none focus:glow-lime"
+                  className="w-full bg-black/40 text-sm text-white py-3 px-4 rounded-xl border border-white/10 focus:border-[#00E5FF] focus:outline-none focus:ring-1 focus:ring-[#00E5FF] transition-all"
                 />
               </div>
 
               {authMode === 'signup' && (
-                <div className="text-left">
-                  <label className="text-[10px] text-gray-400 uppercase font-bold tracking-widest pl-1 font-mono">CONFIRM PASSWORD</label>
+                <div className="text-left space-y-1.5">
+                  <label className="text-[10px] text-gray-400 uppercase font-bold tracking-widest pl-1 font-mono">Repeat Access Code</label>
                   <input
                     type="password"
                     required
                     placeholder="••••••••"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full mt-1.5 bg-black/40 text-sm text-white py-3 px-4 rounded-2xl border border-white/5 focus:border-[#2E5BFF] focus:outline-none"
+                    className="w-full bg-black/40 text-sm text-white py-3 px-4 rounded-xl border border-white/10 focus:border-[#00E5FF] focus:outline-none focus:ring-1 focus:ring-[#00E5FF] transition-all"
                   />
                 </div>
               )}
 
               {authLoading ? (
-                <div className="py-3 px-4 bg-white/5 border border-white/10 rounded-2xl text-center flex items-center justify-center gap-2 text-xs font-mono text-cyan-400 animate-pulse">
+                <div className="py-3 px-4 bg-white/5 border border-white/10 rounded-xl text-center flex items-center justify-center gap-2 text-xs font-mono text-cyan-400 animate-pulse">
                   <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-                  AUTHENTICATING SYNC CHANNELS...
+                  AUTHENTICATING STUDENT SCHEMATIC DATA...
                 </div>
               ) : (
-                <button
-                  type="submit"
-                  className="w-full py-3.5 bg-gradient-to-r from-[#2E5BFF] via-[#7B61FF] to-[#CCFF00] text-black text-xs font-bold rounded-2xl tracking-wider hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer border-none uppercase font-mono"
-                >
-                  {authMode === 'login' ? '⚡ LOG IN / SIGN IN' : '🧬 SIGN UP / REGISTER NODE'}
-                </button>
+                <div className="space-y-4 pt-2">
+                  <button
+                    type="submit"
+                    className="w-full py-3.5 bg-gradient-to-r from-neon-purple to-electric-blue text-white text-xs font-bold rounded-xl tracking-widest hover:brightness-110 active:scale-95 transition-all cursor-pointer border-none uppercase font-mono shadow-[0_0_20px_rgba(139,92,246,0.3)]"
+                  >
+                    {authMode === 'login' ? '🔌 SYNC SESSION NODES' : '🧬 INITIALIZE CORE LOG'}
+                  </button>
+
+                  <div className="relative py-1 flex items-center justify-center">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-white/10"></div>
+                    </div>
+                    <span className="relative bg-[#050816] px-3.5 text-[8.5px] text-gray-500 font-mono tracking-widest uppercase">
+                      OR DIRECT INSTANT AUTHSYNC
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleGoogleSignIn}
+                    className="w-full py-3 bg-white hover:bg-gray-100 text-black text-xs font-black rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer border-none font-mono tracking-wider hover:scale-[1.02] active:scale-[0.98] shadow-md"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.927h6.6c-.29 1.53-1.14 2.82-2.4 3.68v3.053h3.837c2.274-2.1 3.708-5.18 3.708-8.59z" />
+                      <path fill="#34A853" d="M12 24c3.24 0 5.97-1.08 7.96-2.91l-3.837-3.05c-1.08.72-2.45 1.16-4.123 1.16-3.17 0-5.85-2.14-6.81-5.01H1.247v3.16C3.217 21.09 7.36 24 12 24z" />
+                      <path fill="#FBBC05" d="M5.19 14.19a7.135 7.135 0 0 1 0-4.38V6.65H1.247a11.936 11.936 0 0 0 0 10.7z" />
+                      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.43-3.43C17.96 1.19 15.24 0 12 0 7.36 0 3.217 2.91 1.247 6.65L5.19 9.81c.96-2.87 3.64-5.06 6.81-5.06z" />
+                    </svg>
+                    CONTINUE WITH GOOGLE SECURE
+                  </button>
+                </div>
               )}
 
-              <div className="relative py-2.5 flex items-center justify-center">
-                <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10"></div></div>
-                <span className="relative bg-[#030712] px-3.5 text-[9px] text-gray-500 font-mono tracking-widest uppercase">OR PROTOCOL SYNC</span>
-              </div>
 
-              <button
-                type="button"
-                onClick={handleGoogleSignIn}
-                className="w-full py-3 bg-white hover:bg-gray-100 text-black text-xs font-black rounded-2xl flex items-center justify-center gap-2 transition-all cursor-pointer border-none font-mono tracking-wider hover:scale-[1.02] active:scale-[0.98]"
-              >
-                <svg className="w-4.5 h-4.5" viewBox="0 0 24 24">
-                  <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.927h6.6c-.29 1.53-1.14 2.82-2.4 3.68v3.053h3.837c2.274-2.1 3.708-5.18 3.708-8.59z" />
-                  <path fill="#34A853" d="M12 24c3.24 0 5.97-1.08 7.96-2.91l-3.837-3.05c-1.08.72-2.45 1.16-4.123 1.16-3.17 0-5.85-2.14-6.81-5.01H1.247v3.16C3.217 21.09 7.36 24 12 24z" />
-                  <path fill="#FBBC05" d="M5.19 14.19a7.135 7.135 0 0 1 0-4.38V6.65H1.247a11.936 11.936 0 0 0 0 10.7z" />
-                  <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.43-3.43C17.96 1.19 15.24 0 12 0 7.36 0 3.217 2.91 1.247 6.65L5.19 9.81c.96-2.87 3.64-5.06 6.81-5.06z" />
-                </svg>
-                {authMode === 'login' ? 'CONTINUE WITH GOOGLE GMAIL' : 'SIGN UP WITH GOOGLE GMAIL'}
-              </button>
             </form>
           </div>
         </div>
@@ -2029,9 +2219,105 @@ export default function App() {
           3. CORE APPLICATION FRAMEWORK OVERLAY
           ==================================================== */}
       {isLoggedIn && currentPage !== "startup" && currentPage !== "login" && (
-        <div className="p-4 md:p-6 pb-24 max-w-7xl mx-auto relative z-10 transition-all duration-300">
+        <div className="p-4 md:p-6 pb-24 max-w-[1440px] mx-auto relative z-[10] transition-all duration-300 lg:flex lg:gap-8 items-start">
           
-          {isOfflineMode && (
+          {/* LEFT PERSISTENT SIDEBAR - BRAND NEW PREMIUM DESIGN */}
+          <aside className="hidden lg:flex flex-col gap-6 w-[280px] shrink-0 sticky top-6 max-h-[92vh] overflow-y-auto pr-2 custom-scrollbar bg-black/40 border border-white/5 p-5 rounded-[32px] justify-between shadow-[0_10px_40px_rgba(0,0,0,0.8)] backdrop-blur-xl">
+            <div className="space-y-6">
+              {/* Brand Header */}
+              <div className="flex items-center gap-3 px-2">
+                <div className="w-10 h-10 bg-gradient-to-tr from-neon-purple to-electric-blue rounded-xl flex items-center justify-center shadow-[0_0_20px_rgba(139,92,246,0.5)]">
+                  <span className="font-black text-xl italic text-white font-display">N</span>
+                </div>
+                <h2 className="text-lg font-black tracking-tight text-white uppercase font-display">
+                  Nexa <span className="text-electric-blue">Learn</span>
+                </h2>
+              </div>
+
+              {/* Navigation list */}
+              <nav className="flex flex-col gap-1">
+                {[
+                  { id: "home", label: "Dashboard", icon: Layout },
+                  { id: "question_bank", label: "My Learning", icon: GraduationCap },
+                  { id: "marketplace", label: "Courses", icon: BookOpen },
+                  { id: "tournaments", label: "Live Classes", icon: Tv },
+                  { id: "career_roadmap", label: "Skill Paths", icon: Code },
+                  { id: "achievement_vault", label: "Certificates", icon: Award },
+                  { id: "community", label: "Community", icon: Users },
+                  { id: "chats", label: "Messages", icon: MessageSquare },
+                  { id: "notes_vault", label: "Bookmarks", icon: Bookmark },
+                  { id: "notes_generator", label: "Notes", icon: FileText },
+                  { id: "settings", label: "Settings", icon: Settings },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  // Handle highlights
+                  const isActive = currentPage === item.id || 
+                    (item.id === "community" && ["community", "community_feed", "study_groups"].includes(currentPage)) ||
+                    (item.id === "achievement_vault" && ["achievement_vault", "rankings"].includes(currentPage));
+
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setCurrentPage(item.id)}
+                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs tracking-wide transition-all border-none text-left cursor-pointer ${
+                        isActive 
+                          ? 'bg-neon-purple/20 text-[#00E5FF] shadow-[inset_0_1px_3px_rgba(255,255,255,0.05)] border-l-2 border-[#00E5FF] font-bold' 
+                          : 'text-gray-400 hover:text-white hover:bg-white/5 bg-transparent border-l-2 border-transparent'
+                      }`}
+                    >
+                      <Icon className={`w-4 h-4 ${isActive ? 'text-[#00E5FF]' : 'text-gray-400'}`} />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+
+            <div className="space-y-4 mt-6">
+              {/* Upgrade card */}
+              <div className="bg-gradient-to-br from-[#8B5CF6]/10 to-black/80 rounded-2xl p-4 border border-[#8B5CF6]/25 relative overflow-hidden">
+                <Crown className="w-6 h-6 text-cyber-lime mb-2 animate-bounce" />
+                <h4 className="text-[11px] font-bold text-white uppercase tracking-wider font-display">Upgrade to Pro</h4>
+                <p className="text-[9px] text-gray-400 mt-1 font-mono leading-normal font-sans">Unlock VIP custom AI bots & interactive certification.</p>
+                <button 
+                  onClick={() => setCurrentPage("membership")}
+                  className="w-full mt-3 py-2 bg-gradient-to-r from-neon-purple to-purple-600 hover:opacity-90 active:scale-95 text-white text-[9px] font-mono font-black uppercase tracking-wider rounded-lg transition-all text-center border-none cursor-pointer"
+                >
+                  Upgrade Now
+                </button>
+              </div>
+
+              {/* AI helper card */}
+              <div className="bg-gradient-to-br from-[#00E5FF]/10 to-black/80 rounded-2xl p-4 border border-[#00E5FF]/25 relative overflow-hidden">
+                <Sparkles className="w-6 h-6 text-[#00E5FF] mb-2 animate-pulse" />
+                <h4 className="text-[11px] font-bold text-white uppercase tracking-wider font-display">Nexa AI Mentor</h4>
+                <p className="text-[9px] text-gray-400 mt-1 font-mono leading-normal font-sans">24/7 holographic helper trained in complex equations.</p>
+                <button 
+                  onClick={() => setCurrentPage("ai_mentor")}
+                  className="w-full mt-3 py-2 bg-gradient-to-r from-[#00E5FF] to-[#2E5BFF] hover:opacity-90 active:scale-95 text-black text-[9px] font-mono font-black uppercase tracking-wider rounded-lg transition-all text-center border-none cursor-pointer"
+                >
+                  Ask Nexa AI
+                </button>
+              </div>
+
+              {/* Quick stats grid */}
+              <div className="grid grid-cols-2 gap-2 text-center pt-2 border-t border-white/5">
+                <div className="p-1.5 bg-white/2 rounded-lg border border-white/5">
+                  <span className="text-[10px] font-black text-electric-blue block">10K+</span>
+                  <span className="text-[7.5px] font-mono text-gray-500 uppercase">Courses</span>
+                </div>
+                <div className="p-1.5 bg-white/2 rounded-lg border border-white/5">
+                  <span className="text-[10px] font-black text-cyber-lime block">50K+</span>
+                  <span className="text-[7.5px] font-mono text-gray-500 uppercase">Learners</span>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          {/* RIGHT CONTAINER COLUMN */}
+          <div className="flex-1 min-w-0 space-y-6">
+
+            {isOfflineMode && (
             <div className="mb-4 bg-yellow-400/10 border border-[#CCFF00]/30 text-[#CCFF00] rounded-2xl py-2.5 px-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono">
               <div className="flex items-center gap-2 text-center sm:text-left">
                 <span className="relative flex h-2 w-2">
@@ -2272,23 +2558,25 @@ export default function App() {
               <div className="space-y-6">
                 <AdBanner placement="home_top" premiumActive={profile.premiumTier !== "FREE"} />
                 {/* Hero Greeting Panel */}
-                <div className="neo-glass rounded-[32px] p-8 border-white/10 bg-gradient-to-r from-white/5 to-white/2 relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-64 h-64 bg-electric-blue/5 blur-[80px] pointer-events-none"></div>
+                <div className="bg-gradient-to-br from-neon-purple/15 via-black/40 to-black/80 rounded-[32px] p-8 border border-white/10 relative overflow-hidden shadow-[0_15px_50px_rgba(139,92,246,0.1)]">
+                  <div className="absolute top-0 right-0 w-80 h-80 bg-[#00E5FF]/5 blur-[120px] pointer-events-none rounded-full" />
+                  <div className="absolute -bottom-10 -left-10 w-80 h-80 bg-[#8B5CF6]/5 blur-[120px] pointer-events-none rounded-full" />
+                  
                   <div className="flex justify-between items-start flex-wrap gap-4 relative z-10">
                     <div>
-                      <span className="px-3 py-1 bg-electric-blue/20 text-[#2E5BFF] border border-[#2E5BFF]/30 rounded-full text-[10px] uppercase font-bold tracking-widest font-mono">
-                        AI Core Active
+                      <span className="px-3 py-1 bg-gradient-to-r from-neon-purple/20 to-electric-blue/20 text-[#00E5FF] border border-[#00E5FF]/30 rounded-full text-[9px] uppercase font-bold tracking-widest font-mono">
+                        🤖 AI Core Synced & Live
                       </span>
-                      <h3 className="text-3xl md:text-4xl font-extrabold text-white mt-4 tracking-tight leading-tight">
-                        Hello, <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#2E5BFF] to-[#CCFF00]">{profile.username}</span>! 👋
+                      <h3 className="text-3xl md:text-5xl font-black text-white mt-4 tracking-tight leading-none uppercase font-display">
+                        Hello, <span className="text-transparent bg-clip-text bg-gradient-to-r from-neon-purple via-electric-blue to-[#CCFF00] font-sans font-black">{profile.username}</span>! 👋
                       </h3>
-                      <p className="text-xs text-gray-400 mt-2 max-w-md leading-relaxed">
-                        "Your kinetic learning velocity stands at 1.48 GHz. Continue algebraic calculations to scale your league."
+                      <p className="text-xs text-gray-400 mt-2 max-w-lg leading-relaxed">
+                        👋 Let's continue your learning journey. Your neural processing speed is cruising at 1.48 GHz. Sync additional nodes to scale your active sector.
                       </p>
                     </div>
 
                     <div className="text-right">
-                      <span className="text-[10px] uppercase tracking-widest text-[#CCFF00] block font-mono font-bold">WORLDWIDE</span>
+                      <span className="text-[10px] uppercase tracking-widest text-[#00E5FF] block font-mono font-bold">CURRENT LEAGUE SECTOR</span>
                       <span className="text-lg font-black text-white italic uppercase tracking-tighter flex items-center gap-1.5 justify-end mt-1">
                         <Crown className="w-5 h-5 text-[#CCFF00] drop-shadow-[0_0_8px_rgba(204,255,0,0.5)]" /> {profile.league}
                       </span>
@@ -2296,43 +2584,43 @@ export default function App() {
                   </div>
 
                   {/* Level Progress Bar */}
-                  <div className="mt-6">
-                    <div className="flex justify-between text-xs text-mono mb-2">
-                      <span className="text-gray-400">XP PROGRESS ({profile.xp} / 5000)</span>
-                      <span className="text-cyan-400 font-bold">LEVEL CODES</span>
+                  <div className="mt-8">
+                    <div className="flex justify-between text-[11px] font-mono mb-2">
+                      <span className="text-gray-400 font-bold">XP CORE DATA ENCODING ({profile.xp} / 5000 XP)</span>
+                      <span className="text-[#00E5FF] font-bold">NEXANET STATUS: OPTIMAL</span>
                     </div>
-                    <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                    <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/5 p-0.5">
                       <div 
-                        className="h-full bg-gradient-to-r from-[#2E5BFF] via-[#7B61FF] to-[#CCFF00] rounded-full transition-all duration-500" 
+                        className="h-full bg-gradient-to-r from-neon-purple via-electric-blue to-[#CCFF00] rounded-full transition-all duration-500" 
                         style={{ width: `${Math.min(100, (profile.xp / 1000) * 100)}%` }}
                       />
                     </div>
                   </div>
 
                   {/* Focus HP battery & Custom daily Recharger terminal */}
-                  <div className="mt-6 border-t border-white/5 pt-5 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                  <div className="mt-8 border-t border-white/5 pt-6 grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
                     <div>
                       <div className="flex justify-between items-center text-xs mb-2">
                         <div className="flex items-center gap-1.5">
                           <span className="text-red-500 animate-pulse font-bold text-sm">♥</span>
-                          <span className="text-gray-300 uppercase font-mono text-[10px] tracking-wider font-extrabold">FOCUS CAPACITY (HP SYSTEMS)</span>
+                          <span className="text-gray-300 uppercase font-mono text-[10px] tracking-wider font-extrabold">FOCUS STRENGTH SHIELD</span>
                         </div>
-                        <span className={`font-mono font-black text-xs ${userHp < 30 ? 'text-red-400 animate-bounce' : 'text-cyan-400'}`}>
+                        <span className={`font-mono font-black text-xs ${userHp < 30 ? 'text-red-400 animate-bounce' : 'text-[#00E5FF]'}`}>
                           {userHp} / 100 HP
                         </span>
                       </div>
-                      <div className="w-full h-3.5 bg-black/40 rounded-full overflow-hidden border border-white/5 p-0.5">
+                      <div className="w-full h-3 bg-black/40 rounded-full overflow-hidden border border-white/5 p-0.5">
                         <div 
                           className={`h-full rounded-full transition-all duration-500 bg-gradient-to-r ${
                             userHp < 30 
                               ? 'from-red-600 via-orange-500 to-red-400 animate-[pulse_1.5s_infinite]' 
-                              : 'from-cyan-500 via-purple-500 to-[#CCFF00]'
+                              : 'from-neon-purple via-electric-blue to-[#CCFF00]'
                           }`}
                           style={{ width: `${userHp}%` }}
                         />
                       </div>
-                      <p className="text-[9px] text-gray-500 mt-1.5 font-mono">
-                        *Incorrect formulations deplete 15 HP. Correct validation replenishes 10 HP. HP required for Esports tournments.
+                      <p className="text-[9px] text-gray-500 mt-2 font-mono">
+                        *Incorrect formulations deplete 15 HP. Correct validation replenishes 10 HP. HP required for Esports tournaments.
                       </p>
                     </div>
 
@@ -2356,13 +2644,15 @@ export default function App() {
                           addNotification("Cyber Energy Restored", "Injected +25 HP focus capacity into learning core by exchanging 20 XP!", "success");
                           alert("⚡ Focus capacity recovered! Consumed 20 XP.");
                         }}
-                        className="py-2.5 px-4 bg-gradient-to-r from-red-500/20 to-purple-500/20 hover:from-red-500/30 hover:to-purple-500/30 text-white font-mono font-extrabold text-[10px] rounded-2xl hover:scale-105 active:scale-95 transition-all text-center border border-red-500/30 flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-red-500/5 uppercase"
+                        className="py-3 px-4 bg-gradient-to-r from-red-500/10 to-red-600/20 hover:from-red-500/20 hover:to-red-600/30 text-red-400 font-mono font-extrabold text-[10px] rounded-xl hover:scale-102 active:scale-98 transition-all text-center border border-red-500/30 flex items-center justify-center gap-2 cursor-pointer uppercase shadow-md"
                       >
                         ⚡ RECHARGE CYBER ENERGY (-20 XP / +25 HP)
                       </button>
                     </div>
                   </div>
                 </div>
+
+
 
                 {/* Watch & Earn Prompt Banner */}
                 <div className="neo-glass rounded-[28px] p-5 border-white/10 bg-gradient-to-r from-cyan-500/10 via-[#2E5BFF]/10 to-transparent relative overflow-hidden flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -2431,6 +2721,20 @@ export default function App() {
                       </button>
                     </div>
                   </div>
+                </div>
+
+                {/* ====================================================
+                    🚀 DYNAMIC ULTRA-MODERN INNOVATION DECK
+                    ==================================================== */}
+                <div className="mt-8">
+                  <CosmicInnovationDeck 
+                    profile={profile}
+                    allUsers={allUsers}
+                    onGrantRewards={grantRewards}
+                    onDeductCoins={deductCoins}
+                    onAddNotification={addNotification}
+                    saveProfileWithParams={saveProfileWithParams}
+                  />
                 </div>
 
                 {/* Autonomous Weekly Planner - Modular, Responsive & High-Fidelity */}
@@ -2682,6 +2986,7 @@ export default function App() {
                 onDeductCoins={deductCoins}
                 onAddNotification={addNotification}
                 initialSubTab="chats"
+                allUsers={allUsers}
               />
             )}
 
@@ -2776,11 +3081,11 @@ export default function App() {
               };
 
               const filteredUsers = allUsers.filter(u => {
-                return u.username.toLowerCase().includes(userSearchTerm.toLowerCase()) && u.username !== profile.username;
+                return u && u.username && typeof u.username === 'string' && u.username.toLowerCase().includes((userSearchTerm || '').toLowerCase()) && u.username !== profile.username;
               });
 
               const suggestedUsers = allUsers.filter(u => {
-                return u.username !== profile.username &&
+                return u && u.username && u.username !== profile.username &&
                   !friends.includes(u.username) &&
                   !sentFriendRequests.includes(u.username) &&
                   !receivedFriendRequests.includes(u.username);
@@ -2982,10 +3287,21 @@ export default function App() {
             {currentPage === "study_groups" && (() => {
               // Real-time group filtering logic
               const filteredGroups = studyGroups.filter(g => {
-                const query = groupSearchQuery.trim().toLowerCase();
+                // If a creator is defined, handle filtering of creators who have left the app
+                if (g.creator && typeof g.creator === 'string') {
+                  const creatorName = g.creator.toLowerCase().trim();
+                  if (allUsers && allUsers.length > 0) {
+                    const isActive = allUsers.some(u => u && u.username && typeof u.username === 'string' && u.username.toLowerCase().trim() === creatorName) ||
+                                     (profile && profile.username && typeof profile.username === 'string' && profile.username.toLowerCase().trim() === creatorName) ||
+                                     creatorName === "you";
+                    if (!isActive) return false; // Filter out completely
+                  }
+                }
+
+                const query = (groupSearchQuery || '').trim().toLowerCase();
                 const matchesSearch = !query || 
-                  g.name.toLowerCase().includes(query) || 
-                  g.description.toLowerCase().includes(query);
+                  (g.name && g.name.toLowerCase().includes(query)) || 
+                  (g.description && g.description.toLowerCase().includes(query));
                 
                 if (groupSubjectCategory === "All") return matchesSearch;
                 
@@ -2999,7 +3315,8 @@ export default function App() {
                 
                 const keywords = tagsMap[groupSubjectCategory] || [];
                 const matchesCategory = keywords.some(kw => 
-                  g.name.toLowerCase().includes(kw) || g.description.toLowerCase().includes(kw)
+                  (g.name && typeof g.name === 'string' && g.name.toLowerCase().includes(kw)) || 
+                  (g.description && typeof g.description === 'string' && g.description.toLowerCase().includes(kw))
                 );
                 
                 return matchesSearch && matchesCategory;
@@ -3270,6 +3587,7 @@ export default function App() {
                 onDeductCoins={deductCoins}
                 onAddNotification={addNotification}
                 initialSubTab="feed"
+                allUsers={allUsers}
               />
             )}
 
@@ -3425,6 +3743,7 @@ ${input} refers to a key academic paradigm where discrete variable states govern
                 onDeductCoins={deductCoins}
                 onAddNotification={addNotification}
                 initialSubTab="reels"
+                allUsers={allUsers}
               />
             )}
 
@@ -3555,7 +3874,7 @@ ${input} refers to a key academic paradigm where discrete variable states govern
                     </h4>
                   </div>
                   <p className="text-[10px] text-gray-400 leading-relaxed font-sans">
-                    Enter any specific user account username (such as <code className="text-[#CCFF00] font-bold">bhushan googal</code> or your current active node <code className="text-[#CCFF00] font-bold">{profile.username}</code>) to permanently delete their cryptographic stats, custom records, achievement history, and local web cache. Leave the target input blank to dismiss.
+                    Enter any specific user account username (such as your current active node <code className="text-[#CCFF00] font-bold">{profile.username}</code>) to permanently delete their cryptographic stats, custom records, achievement history, and local web cache. Leave the target input blank to dismiss.
                   </p>
 
                   <div className="flex gap-2">
@@ -3563,7 +3882,7 @@ ${input} refers to a key academic paradigm where discrete variable states govern
                       type="text"
                       value={purgeUsernameInput}
                       onChange={(e) => setPurgeUsernameInput(e.target.value)}
-                      placeholder="Write target username (e.g., bhushan googal)"
+                      placeholder="Write target username"
                       className="flex-1 bg-black/40 border border-white/10 hover:border-red-500/30 focus:border-red-500/50 rounded-xl px-3 py-2 text-xs font-mono text-white placeholder-gray-600 outline-none transition-all"
                     />
                     <button
@@ -3587,13 +3906,13 @@ ${input} refers to a key academic paradigm where discrete variable states govern
                             
                             // Check if we deleted ourselves
                             if (profile.username && profile.username.toLowerCase().trim() === target.toLowerCase().trim()) {
-                              handleLogout();
+                              executeRealLogout();
                             }
                           } else {
                             addNotification("Deletion Notice", `Database path for "${target}" purged completely.`, "success");
                             setPurgeUsernameInput("");
                             if (profile.username && profile.username.toLowerCase().trim() === target.toLowerCase().trim()) {
-                              handleLogout();
+                              executeRealLogout();
                             }
                           }
                         } catch (e: any) {
@@ -3896,8 +4215,8 @@ ${input} refers to a key academic paradigm where discrete variable states govern
 
               const premiumPasses = [
                 { id: 'daily', name: 'Daily Flash Pass', priceCoins: 30000, priceReal: '₹7', type: 'PLUS', features: ['Unrestricted scan speeds', 'Faster AI tutors', 'No ad popups (24 hours)'] },
-                { id: 'monthly', name: 'Monthly VIP Node', priceCoins: 600000, priceReal: '₹249', type: 'PRO', features: ['All Daily features', 'AI Exam Predictions', 'Holographic avatar borders', 'AI Notes Generation', 'Unlimited Private Voice Rooms'] },
-                { id: 'yearly', name: 'Yearly Champion Sphere', priceCoins: 2000000, priceReal: '₹3,000', type: 'PRO', features: ['All Pro features indefinitely', 'VIP exclusive color themes', 'Custom analytics report panel', 'Priority server channels'] }
+                { id: 'monthly', name: 'Monthly VIP Node', priceCoins: 60000, priceReal: '₹249', type: 'PRO', features: ['All Daily features', 'AI Exam Predictions', 'Holographic avatar borders', 'AI Notes Generation', 'Unlimited Private Voice Rooms'] },
+                { id: 'yearly', name: 'Yearly Champion Sphere', priceCoins: 20000000, priceReal: '₹3,000', type: 'PRO', features: ['All Pro features indefinitely', 'VIP exclusive color themes', 'Custom analytics report panel', 'Priority server channels'] }
               ];
 
               const redeemWithCoins = (pass: any) => {
@@ -5108,6 +5427,7 @@ ${input} refers to a key academic paradigm where discrete variable states govern
               );
             })}
           </footer>
+        </div>
 
           {/* ====================================================
               DYNAMIC OVERLAYS & MODALS SUITE
@@ -5888,7 +6208,8 @@ ${input} refers to a key academic paradigm where discrete variable states govern
                 icon: grpEmoji,
                 membersCount: invitedFriends.length + 1,
                 sharedNotesCount: 0,
-                activeVoiceRooms: 0
+                activeVoiceRooms: 0,
+                creator: profile.username || "You"
               };
               
               setStudyGroups([...studyGroups, newGrp]);
@@ -6362,13 +6683,13 @@ ${input} refers to a key academic paradigm where discrete variable states govern
       {showGoogleGmailPopup && (() => {
         return (
           <div className="fixed inset-0 bg-black/95 backdrop-blur-3xl z-[160] flex flex-col items-center justify-center p-4 animate-fade-in animate-duration-300">
-            <div className="w-full max-w-md bg-[#090b11] border border-cyan-500/30 p-8 rounded-[35px] text-center shadow-[0_20px_60px_rgba(6,182,212,0.25)] relative overflow-hidden space-y-6">
+            <div className="w-full max-w-md bg-[#090b11] border border-cyan-500/30 p-8 rounded-[35px] text-center shadow-[0_20px_60px_rgba(6,182,212,0.25)] relative overflow-hidden space-y-6 animate-fade-in">
               {/* Glowing status line */}
               <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-transparent via-[#4285F4] to-[#34A853] opacity-80" />
               
-              <div className="flex justify-center mb-2">
-                <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center border border-white/10 shadow-inner">
-                  <svg className="w-8 h-8" viewBox="0 0 24 24">
+              <div className="flex justify-center mb-1">
+                <div className="w-14 h-14 bg-white rounded-full flex items-center justify-center border border-white/10 shadow-md">
+                  <svg className="w-7 h-7" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v3.927h6.6c-.29 1.53-1.14 2.82-2.4 3.68v3.053h3.837c2.274-2.1 3.708-5.18 3.708-8.59z" />
                     <path fill="#34A853" d="M12 24c3.24 0 5.97-1.08 7.96-2.91l-3.837-3.05c-1.08.72-2.45 1.16-4.123 1.16-3.17 0-5.85-2.14-6.81-5.01H1.247v3.16C3.217 21.09 7.36 24 12 24z" />
                     <path fill="#FBBC05" d="M5.19 14.19a7.135 7.135 0 0 1 0-4.38V6.65H1.247a11.936 11.936 0 0 0 0 10.7z" />
@@ -6377,67 +6698,72 @@ ${input} refers to a key academic paradigm where discrete variable states govern
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <h4 className="text-2xl font-black text-white tracking-tight uppercase">Google Account Sync</h4>
-                <p className="text-xs text-gray-400 font-mono italic">
-                  Popups restricted in iframe. Synchronize securely via instant credentials console.
+              <div className="space-y-1">
+                <h4 className="text-xl font-black text-white tracking-tight">Sign in with Google</h4>
+                <p className="text-[11px] text-gray-400 font-sans">
+                  to continue to <span className="text-[#CCFF00] font-black">Nexa Companion</span>
                 </p>
               </div>
 
-              {/* ACCOUNT CARD SELECTION CHOOSER */}
-              <div className="space-y-4">
+              {/* ACCOUNT CHOSER LIST REPLACED WITH AN AUTHENTIC GOOGLE CREDENTIALS INTAKE FORM */}
+              <div className="space-y-4 text-left pt-2">
                 <form onSubmit={(e) => {
                   e.preventDefault();
-                  processGoogleUser(googleGmailInput, googleDisplayName);
-                }} className="space-y-4 text-left">
-                  <div>
-                    <label className="text-[10px] text-gray-400 uppercase font-black tracking-widest block pl-1 font-mono">
-                      ENTER GOOGLE GMAIL
+                  if (!googleGmailInput.trim()) {
+                    alert("Please provide a valid Google Gmail address!");
+                    return;
+                  }
+                  setShowGoogleGmailPopup(false);
+                  processGoogleUser(googleGmailInput, googleDisplayName || "Google Student");
+                }} className="space-y-4">
+                  
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase font-mono tracking-widest text-gray-400 font-bold block pl-1">
+                      Google Email Address
                     </label>
                     <input
                       type="email"
                       required
-                      placeholder="username@gmail.com"
+                      placeholder=""
                       value={googleGmailInput}
                       onChange={(e) => setGoogleGmailInput(e.target.value)}
-                      className="w-full mt-2 bg-black/50 text-white font-mono text-sm py-3 px-4 rounded-xl border border-white/10 focus:border-[#4285F4] focus:outline-none"
+                      className="w-full bg-black/60 text-white font-mono text-xs py-3 px-4 rounded-xl border border-white/10 focus:border-cyan-400 focus:outline-none placeholder-gray-600"
                     />
                   </div>
 
-                  <div>
-                    <label className="text-[10px] text-gray-400 uppercase font-black tracking-widest block pl-1 font-mono">
-                      DISPLAY NAME (OPTIONAL)
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase font-mono tracking-widest text-[#4285F4] font-bold block pl-1">
+                      Full Name
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. John Doe"
+                      required
+                      placeholder=""
                       value={googleDisplayName}
                       onChange={(e) => setGoogleDisplayName(e.target.value)}
-                      className="w-full mt-2 bg-black/50 text-white font-mono text-sm py-3 px-4 rounded-xl border border-white/10 focus:border-[#34A853] focus:outline-none"
+                      className="w-full bg-black/60 text-white font-sans text-xs py-3 px-4 rounded-xl border border-white/10 focus:border-cyan-400 focus:outline-none placeholder-gray-600"
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowGoogleGmailPopup(false)}
-                      className="py-3.5 px-4 bg-white/5 hover:bg-white/10 text-gray-300 font-bold text-xs rounded-xl transition-all border border-white/10 font-mono uppercase cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="py-3.5 px-4 bg-white/5 hover:bg-white/10 text-white font-bold text-xs rounded-xl transition-all border border-white/10 font-mono uppercase cursor-pointer"
-                    >
-                      Verify & Sync
-                    </button>
-                  </div>
+                  <button
+                    type="submit"
+                    className="w-full py-3 mt-2 bg-gradient-to-r from-blue-500 to-cyan-500 hover:brightness-110 active:scale-95 text-white font-black text-xs rounded-xl tracking-wider uppercase font-mono transition-all border-none cursor-pointer"
+                  >
+                    CONTINUE & SIGN IN securely
+                  </button>
                 </form>
               </div>
 
-              <p className="text-[9px] text-gray-500 font-mono leading-normal italic text-center">
-                🔒 Google Secure Socket protocol ensures all academic achievements and progress tokens are synchronized to Firebase.
-              </p>
+              <div className="flex justify-between items-center pt-2 text-[10px] text-gray-500 font-mono">
+                <button
+                  type="button"
+                  onClick={() => setShowGoogleGmailPopup(false)}
+                  className="hover:text-white bg-transparent border-none cursor-pointer uppercase tracking-wider font-extrabold"
+                >
+                  ← Go Back
+                </button>
+                <span>🔒 Google OAuth Secure Sync</span>
+              </div>
             </div>
           </div>
         );

@@ -6,19 +6,19 @@
   --font-display: "Space Grotesk", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   --color-cyber-lime: #CCFF00;
-  --color-neon-purple: #7B61FF;
-  --color-electric-blue: #2E5BFF;
-  --color-dark-slate: #030712;
+  --color-neon-purple: #8B5CF6;
+  --color-electric-blue: #00E5FF;
+  --color-dark-slate: #050816;
 }
 
 :root {
-  --glow-color: #2E5BFF;
-  --secondary-glow: #7B61FF;
+  --glow-color: #00E5FF;
+  --secondary-glow: #8B5CF6;
 }
 
 body {
   margin: 0;
-  background-color: #030712;
+  background-color: #050816;
   color: #f3f4f6;
   font-family: var(--font-sans);
   overflow-x: hidden;
@@ -137,4 +137,15 @@ body {
     display: none !important;
   }
 }
+
+/* Duolingo high-fidelity custom shaking micro-animations template */
+@keyframes shake-anim {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-8px); }
+  20%, 40%, 60%, 80% { transform: translateX(8px); }
+}
+.animate-shake {
+  animation: shake-anim 0.5s ease-in-out;
+}
+
 
